@@ -1,0 +1,27 @@
+{
+  "hoop_dx": 0.0,
+  "hoop_dy": 0.0,
+  "click_latency_s": 0.03,
+  "launch_y_bias": 0.0,
+  "hoop_hsv_lo": [
+    5,
+    100,
+    120
+  ],
+  "hoop_hsv_hi": [
+    22,
+    255,
+    255
+  ],
+  "plat_hsv_lo": [
+    12,
+    50,
+    70
+  ],
+  "plat_hsv_hi": [
+    35,
+    220,
+    210
+  ],
+  "dart_latency_s": 0.053
+}

@@ -1,0 +1,21 @@
+# Store every text file with LF in the repository, and check it out with
+# whatever the local platform expects.  Without this, committing from Windows
+# and from Linux produces diffs where every line changed and nothing did.
+* text=auto
+
+# Sources, explicitly, so nothing depends on Git's guess.
+*.py    text diff=python
+*.md    text
+*.json  text
+*.html  text
+*.css   text
+*.yml   text
+*.txt   text
+
+# Binary: never touch these, and never try to diff them as text.
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.npy   binary
+*.exe   binary
+*.asar  binary

@@ -1,0 +1,54 @@
+# ===========================================================================
+# ALLOWLIST, not a blocklist.
+#
+# Everything is ignored, and the few paths that belong in a public repository
+# are added back one at a time.  Same reasoning as app/tools/release_audit.py:
+# the failure modes are not symmetric.  Forgetting to exclude something
+# publishes it -- silently, permanently, and to everyone.  Forgetting to
+# include something produces an obvious "it doesn't run" that gets fixed in a
+# minute.  A blocklist fails in the direction that matters.
+#
+# WHAT THIS IS KEEPING OUT OF A PUBLIC REPO
+# -----------------------------------------
+#   extracted/, app.asar  -- the unpacked Legends of Idleon client.  That is
+#                            Lava Flame Studios' copyrighted game, not ours to
+#                            redistribute; publishing it invites a takedown.
+#   bot/recordings/       -- 3+ GB of full-screen capture of a live account:
+#                            character names, progress, passers-by.
+#   _dev/, sushi_unknown/ -- screenshots taken mid-session, same problem.
+#   dist/                 -- build output, including an 89 MB exe.
+#
+# Before your first push, run:  git status --short
+# Anything listed that is not app/, web/ or a root .md file is a bug in here.
+# ===========================================================================
+
+# Ignore everything at the root...
+/*
+
+# ...then allow only these back.
+!/.gitignore
+!/.gitattributes
+!/README.md
+!/LICENSE
+!/RELEASING.md
+!/app/
+!/web/
+
+# --- working data inside app/, which the allowlist would otherwise let in ---
+# These mirror DENY in app/tools/release_audit.py.  Keep the two in step: that
+# file governs what enters the exe, this one governs what enters the repo, and
+# a folder that is unsafe to ship is unsafe to publish.
+__pycache__/
+*.pyc
+*.pyo
+sushi_unknown/
+wind_unknown/
+sushi_label/
+misses/
+recordings/
+hoops_stats.json
+*.png.bak
+
+# Local run data, if it ever lands in the tree rather than %APPDATA%.
+*.log
+debug/
