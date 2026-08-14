@@ -1,0 +1,15 @@
+# Runtime dependencies.  Windows only -- the window handling calls user32
+# through ctypes, so there is no pywin32 here and nothing to install for it.
+#
+# Versions are pinned to what the vision code is calibrated against.  This is
+# not caution for its own sake: an unpinned `pip install opencv-python-headless`
+# once pulled cv2 5.0.0, a major version jump underneath template matching and
+# HSV thresholds, which is exactly the kind of change that produces subtle
+# detection failures a week later rather than an honest crash.
+opencv-python==4.13.0
+numpy==2.4.4
+mss==10.2.0
+PySide6==6.11.1
+
+# Build only.  Not needed to run from source.
+pyinstaller==6.22.0

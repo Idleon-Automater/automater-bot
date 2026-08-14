@@ -1,0 +1,80 @@
+# Builds IdleonAutomator.exe from a clean checkout on a Windows runner.
+#
+# WHY THIS EXISTS
+# ---------------
+# A release built on a laptop is a release only one person can reproduce, and
+# nobody else can check what went into it. Building here means the exe is
+# traceable to a public commit, produced by a machine with no local state --
+# which is also the prerequisite for code signing: a signing service attests
+# that a binary came from a specific commit through a pipeline nobody
+# hand-touched, and it cannot attest that about a file uploaded from a desktop.
+#
+# The signing step is deliberately not here yet. It is added once a signing
+# provider is set up, and it goes AFTER the build and BEFORE make_manifest.py,
+# because signing rewrites the executable and changes its SHA-256.
+
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:      # so a build can be started by hand from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Catches an import error or a missing data file in seconds, before
+      # spending two minutes on PyInstaller only to find out the same thing.
+      - name: Import check
+        working-directory: app
+        run: |
+          python -c "import core.update, core.worlds, core.tasklists; print('core OK')"
+          python -c "import tools.release_audit, tools.make_manifest, tools.check_release; print('tools OK')"
+
+      - name: Build
+        working-directory: app
+        run: python tools/build_exe.py
+
+      # build_exe.py already writes version.json, but re-running it standalone
+      # proves the post-signing path works -- this is the exact command that
+      # will run against the signed binary once signing is wired in.
+      - name: Write manifest
+        working-directory: app
+        run: python tools/make_manifest.py
+
+      - name: Report
+        shell: pwsh
+        run: |
+          $exe = Get-Item dist/IdleonAutomator.exe
+          "exe    : {0:N1} MB" -f ($exe.Length / 1MB)
+          "sha256 : " + (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+          Get-Content dist/version.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: IdleonAutomator
+          path: |
+            dist/IdleonAutomator.exe
+            dist/version.json
+          if-no-files-found: error
+          retention-days: 30

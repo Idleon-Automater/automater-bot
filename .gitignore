@@ -28,9 +28,11 @@
 # ...then allow only these back.
 !/.gitignore
 !/.gitattributes
+!/.github/
 !/README.md
 !/LICENSE
 !/RELEASING.md
+!/requirements.txt
 !/app/
 !/web/
 

@@ -1,30 +1,28 @@
 # Idleon Automator
 
-A free, portable Windows program that plays the tedious parts of
-[Legends of Idleon](https://www.legendsofidleon.com/) for you. Build a list of tasks, press
-Run, and go do something else.
+An unofficial desktop assistant for the hands-on parts of
+[Legends of Idleon](https://www.legendsofidleon.com/), a free-to-play idle MMO.
 
-It works by reading the screen and moving the mouse — no memory editing, no packet
-manipulation, no modified game files. It travels between worlds, opens each screen, and does
-the work the way a person would.
+Idle games run themselves — except for the parts that don't. A handful of daily jobs still
+need a person sitting there clicking: ranking up refinery salts, merging a sushi grid one
+tile at a time, playing the same minigame for the same reward. This builds those into a list
+you can run in one go.
 
 **[Download the latest release →](https://idleonautomater.pages.dev/)**
 
----
+## How it works
 
-## ⚠️ Read this before using it
+It is a screen reader and a mouse driver, and nothing more:
 
-**Automation may break the game's rules.** Legends of Idleon is made by Lava Flame Studios,
-who set the terms for how it may be played. This project is not made by, endorsed by, or
-connected to Lava in any way. Using it could get your account suspended or banned. That risk
-is yours to take, and it is a real one.
+- **Reads** the game window with a screen capture, and locates things with OpenCV template
+  matching — the same technique as a visual test harness
+- **Acts** by moving the system cursor through `user32`, the way any accessibility or macro
+  tool does
 
-**It can get things wrong.** It reads the screen and clicks what it believes it sees. A
-misread costs a click, and some clicks cost resources. It is written to do nothing when it is
-unsure rather than guess — but "written to" is not "guaranteed to".
-
-**Watch it the first few times.** Press <kbd>F6</kbd> to stop, twice to force it and get your
-mouse back.
+There is **no memory reading or writing, no code injection, no packet interception, no
+modified or redistributed game files, and no network traffic to the game's servers**. It has
+no more access to the game than a person watching the screen. If the window is covered, it
+stops, because it genuinely cannot see.
 
 ## What it can run
 
@@ -36,6 +34,18 @@ mouse back.
 | **Throwy Darts** | 1 | Reads the wind and the moving platform each throw, aiming for bullseyes and the nine-streak |
 
 Each task knows how to travel to itself, so a list can cross the map unattended.
+
+## Before you use it
+
+**It is unofficial.** Not made by, endorsed by, or connected to Lava Flame Studios. Whether
+third-party automation is permitted is the game's operator's call, not mine — read their terms
+and decide for yourself before running it. It is supervised, single-account, and does nothing
+you could not do by hand; that is a design goal, not a legal opinion.
+
+**It can get things wrong.** It clicks what it believes it sees, and a misread can cost
+resources. It is written to do nothing when unsure rather than guess — but "written to" is not
+"guaranteed to". Watch it the first few times, and press <kbd>F6</kbd> to stop it (twice to
+force it and get the mouse back).
 
 ## Your data
 
@@ -54,7 +64,7 @@ an update you get a link — it never downloads or installs anything by itself. 
 Windows, Python 3.11+.
 
 ```
-pip install PySide6 opencv-python numpy mss pywin32
+pip install -r requirements.txt
 cd app
 python run.py
 ```
@@ -68,6 +78,10 @@ python tools/build_exe.py
 
 Produces a single portable `dist/IdleonAutomator.exe` (~89 MB — OpenCV, Qt and numpy) plus
 `dist/version.json`. No installer; it writes nothing outside `%APPDATA%`.
+
+Every push also builds on a clean Windows runner via
+[GitHub Actions](.github/workflows/build.yml), so the released binary is traceable to a public
+commit rather than to somebody's laptop.
 
 Release process, including signing and verification: **[RELEASING.md](RELEASING.md)**.
 
