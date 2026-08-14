@@ -1,4 +1,5 @@
-﻿# Builds IdleonAutomator.exe from a clean checkout on a Windows runner.
+# Builds IdleonAutomator.exe from a clean checkout on a Windows runner, and
+# optionally has SignPath sign it.
 #
 # WHY THIS EXISTS
 # ---------------
@@ -9,9 +10,15 @@
 # that a binary came from a specific commit through a pipeline nobody
 # hand-touched, and it cannot attest that about a file uploaded from a desktop.
 #
-# The signing step is deliberately not here yet. It is added once a signing
-# provider is set up, and it goes AFTER the build and BEFORE make_manifest.py,
-# because signing rewrites the executable and changes its SHA-256.
+# THE ORDER MATTERS
+# -----------------
+#     build  ->  sign  ->  hash  ->  publish
+#
+# Signing appends to the executable and changes its bytes, so version.json must
+# be written AFTER signing or it describes a file nobody will ever download.
+# That is why the unsigned upload carries the exe ALONE: SignPath's artifact
+# configuration expects a zip containing exactly IdleonAutomator.exe, and a
+# manifest generated before signing would be wrong anyway.
 
 name: build
 
@@ -21,10 +28,16 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
-  workflow_dispatch:      # so a build can be started by hand from the Actions tab
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: 'Submit the build to SignPath for signing'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  id-token: write        # SignPath uses OIDC to verify the workflow's identity
 
 jobs:
   windows:
@@ -55,9 +68,50 @@ jobs:
         working-directory: app
         run: python tools/build_exe.py
 
-      # build_exe.py already writes version.json, but re-running it standalone
-      # proves the post-signing path works -- this is the exact command that
-      # will run against the signed binary once signing is wired in.
+      # The exe ALONE, so the zip GitHub produces matches the artifact
+      # configuration exactly: <zip-file><pe-file path="IdleonAutomator.exe">.
+      # Anything else in here makes the zip not match and the request fail.
+      - name: Upload unsigned exe
+        id: unsigned
+        uses: actions/upload-artifact@v7
+        with:
+          name: IdleonAutomator-unsigned
+          path: dist/IdleonAutomator.exe
+          if-no-files-found: error
+          retention-days: 7
+
+      # ---- signing, on request only -----------------------------------
+      # Not on every push: signing requests are a finite resource on a free
+      # tier, and an unsigned build is still a perfectly good check that the
+      # code compiles. Run this workflow by hand with "sign" ticked, or push a
+      # v* tag, when you actually want a signed binary.
+      - name: Submit to SignPath
+        if: inputs.sign || startsWith(github.ref, 'refs/tags/v')
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: 'abf18e59-6fa4-4beb-b124-1fd46fd1264f'
+          project-slug: 'automater-bot'
+          signing-policy-slug: 'Test_signing'
+          github-artifact-id: '${{ steps.unsigned.outputs.artifact-id }}'
+          wait-for-completion: true
+          output-artifact-directory: 'signed'
+
+      # dist/ holds what gets shipped, so the signed binary replaces the
+      # unsigned one there -- and make_manifest.py then hashes the file that
+      # will actually be published.
+      - name: Use the signed exe
+        if: inputs.sign || startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $signed = Get-ChildItem signed -Recurse -Filter IdleonAutomator.exe |
+                    Select-Object -First 1
+          if (-not $signed) { throw "SignPath returned no IdleonAutomator.exe" }
+          Copy-Item $signed.FullName dist/IdleonAutomator.exe -Force
+          "replaced dist/IdleonAutomator.exe with the signed build"
+
+      # Runs in both cases. On an unsigned build it reports "signature: NONE",
+      # which is the honest answer rather than a silent omission.
       - name: Write manifest
         working-directory: app
         run: python tools/make_manifest.py
@@ -68,9 +122,12 @@ jobs:
           $exe = Get-Item dist/IdleonAutomator.exe
           "exe    : {0:N1} MB" -f ($exe.Length / 1MB)
           "sha256 : " + (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+          $sig = Get-AuthenticodeSignature $exe.FullName
+          "signed : $($sig.Status)  $($sig.SignerCertificate.Subject)"
           Get-Content dist/version.json
 
-      - uses: actions/upload-artifact@v7
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v7
         with:
           name: IdleonAutomator
           path: |
