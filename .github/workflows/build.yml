@@ -85,6 +85,29 @@ jobs:
       # tier, and an unsigned build is still a perfectly good check that the
       # code compiles. Run this workflow by hand with "sign" ticked, or push a
       # v* tag, when you actually want a signed binary.
+      # Reports whether the secret arrived, WITHOUT revealing it. GitHub masks
+      # secret values in logs, but a length is safe and is the one fact that
+      # separates "the secret is missing or misnamed" from "the token itself is
+      # being refused" -- two failures that look identical from the outside.
+      - name: Check the API token reached the runner
+        if: inputs.sign || startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TOKEN)) {
+            "SIGNPATH_API_TOKEN is EMPTY."
+            "  The secret is missing, misnamed, or was added somewhere other"
+            "  than repository secrets. It must be named exactly"
+            "  SIGNPATH_API_TOKEN under Settings > Secrets and variables >"
+            "  Actions > Repository secrets."
+            exit 1
+          }
+          "SIGNPATH_API_TOKEN present, length $($env:TOKEN.Length) characters."
+          if ($env:TOKEN -match '\s') {
+            "  WARNING: it contains whitespace -- likely a copy/paste artefact."
+          }
+
       - name: Submit to SignPath
         if: inputs.sign || startsWith(github.ref, 'refs/tags/v')
         uses: signpath/github-action-submit-signing-request@v1
