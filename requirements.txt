@@ -6,10 +6,20 @@
 # once pulled cv2 5.0.0, a major version jump underneath template matching and
 # HSV thresholds, which is exactly the kind of change that produces subtle
 # detection failures a week later rather than an honest crash.
-opencv-python==4.13.0
+#
+# Pin the DISTRIBUTION version, not the one the module reports.  opencv-python
+# publishes four-part versions -- cv2.__version__ says "4.13.0" while the
+# package on PyPI is 4.13.0.92 -- so a pin copied from the module is a version
+# that does not exist and fails to resolve.
+opencv-python==4.13.0.92
 numpy==2.4.4
 mss==10.2.0
-PySide6==6.11.1
+
+# Essentials, not the full PySide6: QtCore, QtGui and QtWidgets are all this
+# uses, and it is what the working environment actually has installed.  The
+# full package additionally pulls the Addons (WebEngine, 3D, Charts, ...),
+# which this never imports and build_exe.py explicitly excludes anyway.
+PySide6-Essentials==6.11.1
 
 # Build only.  Not needed to run from source.
 pyinstaller==6.22.0
