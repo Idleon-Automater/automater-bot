@@ -43,6 +43,11 @@ on:
         description: 'Submit the build to SignPath for signing'
         type: boolean
         default: false
+      notes:
+        description: 'Release notes - what users are told changed'
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -121,8 +126,15 @@ jobs:
 
       # Runs in both cases. On an unsigned build it reports "signature: NONE",
       # which is the honest answer rather than a silent omission.
+      # Notes travel by environment variable, for two reasons. ${{ }} is
+      # substituted before the shell sees it, so a quote or a semicolon typed
+      # into the form would otherwise execute as script. And PowerShell drops
+      # an empty string argument entirely, so passing --notes "" on an ordinary
+      # push would reach argparse as a bare --notes and fail the build.
       - name: Write manifest
         working-directory: app
+        env:
+          RELEASE_NOTES: ${{ inputs.notes }}
         run: python tools/make_manifest.py
 
       - name: Report

@@ -23,6 +23,7 @@ A version BUMP clears them, because notes describing the previous release would
 tell users the wrong thing changed.
 """
 
+import argparse
 import hashlib
 import json
 import os
@@ -64,8 +65,15 @@ def signature_status(exe):
         return None
 
 
-def write(exe=None, out=None, quiet=False):
-    """Regenerate the manifest for `exe`.  Returns the manifest dict."""
+def write(exe=None, out=None, quiet=False, notes=None):
+    """
+    Regenerate the manifest for `exe`.  Returns the manifest dict.
+
+    `notes` given explicitly wins.  Otherwise they are carried over from an
+    existing manifest of the SAME version -- which works locally but never in
+    CI, where the runner starts with no previous file and there is nothing to
+    carry over.  That is what --notes is for.
+    """
     from core.update import VERSION, BUCKET
 
     exe = exe or os.path.join(DIST, f"{NAME}.exe")
@@ -73,14 +81,16 @@ def write(exe=None, out=None, quiet=False):
     if not os.path.exists(exe):
         raise SystemExit(f"no exe at {exe} -- run tools/build_exe.py first")
 
-    notes = ""
-    try:
-        with open(out, encoding="utf-8") as f:
-            previous = json.load(f)
-        if previous.get("version") == VERSION:
-            notes = str(previous.get("notes") or "")
-    except Exception:
-        pass
+    if notes is None:
+        notes = ""
+        try:
+            with open(out, encoding="utf-8") as f:
+                previous = json.load(f)
+            if previous.get("version") == VERSION:
+                notes = str(previous.get("notes") or "")
+        except Exception:
+            pass
+    notes = str(notes).strip()
 
     manifest = {
         "version": VERSION,
@@ -113,4 +123,22 @@ def write(exe=None, out=None, quiet=False):
 
 
 if __name__ == "__main__":
-    write()
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--notes", default=None,
+                    help="release notes for this version. Omit to keep the "
+                         "notes already in the manifest (same version only).")
+    ap.add_argument("--exe", default=None, help="path to the executable")
+    ap.add_argument("--out", default=None, help="path to write version.json")
+    args = ap.parse_args()
+
+    # Falls back to RELEASE_NOTES because PowerShell DROPS an empty string
+    # argument entirely: `--notes ""` with nothing typed into the CI form
+    # arrives as a bare `--notes` and argparse rejects it. An environment
+    # variable has no such edge case, and cannot be mangled by quoting.
+    notes = args.notes
+    if not notes:
+        notes = os.environ.get("RELEASE_NOTES")
+
+    # Blank still means "none given", not "blank the notes" -- otherwise an
+    # ordinary build would wipe notes a previous run had set.
+    write(exe=args.exe, out=args.out, notes=(notes if notes else None))
