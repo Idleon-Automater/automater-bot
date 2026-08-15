@@ -5,20 +5,29 @@
 # ---------------
 # A release built on a laptop is a release only one person can reproduce, and
 # nobody else can check what went into it. Building here means the exe is
-# traceable to a public commit, produced by a machine with no local state --
-# which is also the prerequisite for code signing: a signing service attests
-# that a binary came from a specific commit through a pipeline nobody
-# hand-touched, and it cannot attest that about a file uploaded from a desktop.
+# traceable to a public commit, produced by a machine with no local state.
+#
+# WHY THE POWERSHELL MODULE AND NOT THE GITHUB ACTIONS CONNECTOR
+# --------------------------------------------------------------
+# The connector (signpath/github-action-submit-signing-request) answered every
+# request with 400 "Could not authorize against SignPath API", while the very
+# same token returned 200 against the REST API and a manual submit through the
+# web UI signed successfully. SignPath's own CI Integration tab for this policy
+# documents the PowerShell module rather than the connector -- so this uses the
+# route they point at, which is also the route already proven to work here.
+#
+# The trade-off: the connector additionally performs ORIGIN VERIFICATION, tying
+# a signature to a specific commit and workflow run. This does not. That is
+# acceptable for a test certificate, and is worth revisiting for release
+# signing, when the extra assurance is the whole point.
 #
 # THE ORDER MATTERS
 # -----------------
 #     build  ->  sign  ->  hash  ->  publish
 #
-# Signing appends to the executable and changes its bytes, so version.json must
-# be written AFTER signing or it describes a file nobody will ever download.
-# That is why the unsigned upload carries the exe ALONE: SignPath's artifact
-# configuration expects a zip containing exactly IdleonAutomator.exe, and a
-# manifest generated before signing would be wrong anyway.
+# Signing rewrites the executable, so version.json must be written AFTER it or
+# it describes a file nobody will ever download. Measured on a real request:
+# the artifact hash changed from 80a893a1... to 6421e1f6... through signing.
 
 name: build
 
@@ -37,7 +46,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write        # SignPath uses OIDC to verify the workflow's identity
 
 jobs:
   windows:
@@ -68,69 +76,47 @@ jobs:
         working-directory: app
         run: python tools/build_exe.py
 
-      # The exe ALONE, so the zip GitHub produces matches the artifact
-      # configuration exactly: <zip-file><pe-file path="IdleonAutomator.exe">.
-      # Anything else in here makes the zip not match and the request fail.
-      - name: Upload unsigned exe
-        id: unsigned
-        uses: actions/upload-artifact@v7
-        with:
-          name: IdleonAutomator-unsigned
-          path: dist/IdleonAutomator.exe
-          if-no-files-found: error
-          retention-days: 7
-
       # ---- signing, on request only -----------------------------------
-      # Not on every push: signing requests are a finite resource on a free
-      # tier, and an unsigned build is still a perfectly good check that the
-      # code compiles. Run this workflow by hand with "sign" ticked, or push a
-      # v* tag, when you actually want a signed binary.
-      # Reports whether the secret arrived, WITHOUT revealing it. GitHub masks
-      # secret values in logs, but a length is safe and is the one fact that
-      # separates "the secret is missing or misnamed" from "the token itself is
-      # being refused" -- two failures that look identical from the outside.
-      - name: Check the API token reached the runner
+      # Not on every push: signing requests are a finite resource and an
+      # unsigned build still proves the code compiles. Run this workflow by
+      # hand with "sign" ticked, or push a v* tag.
+      - name: Sign with SignPath
         if: inputs.sign || startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
-          TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:TOKEN)) {
-            "SIGNPATH_API_TOKEN is EMPTY."
-            "  The secret is missing, misnamed, or was added somewhere other"
-            "  than repository secrets. It must be named exactly"
-            "  SIGNPATH_API_TOKEN under Settings > Secrets and variables >"
-            "  Actions > Repository secrets."
-            exit 1
-          }
-          "SIGNPATH_API_TOKEN present, length $($env:TOKEN.Length) characters."
-          if ($env:TOKEN -match '\s') {
-            "  WARNING: it contains whitespace -- likely a copy/paste artefact."
+          if ([string]::IsNullOrWhiteSpace($env:SIGNPATH_API_TOKEN)) {
+            throw "SIGNPATH_API_TOKEN is empty - check the repository secret."
           }
 
-      - name: Submit to SignPath
-        if: inputs.sign || startsWith(github.ref, 'refs/tags/v')
-        uses: signpath/github-action-submit-signing-request@v2
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: 'abf18e59-6fa4-4beb-b124-1fd46fd1264f'
-          project-slug: 'automater-bot'
-          signing-policy-slug: 'Test_signing'
-          github-artifact-id: '${{ steps.unsigned.outputs.artifact-id }}'
-          wait-for-completion: true
-          output-artifact-directory: 'signed'
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          Install-Module -Name SignPath -Force -Scope CurrentUser
+          Import-Module SignPath
 
-      # dist/ holds what gets shipped, so the signed binary replaces the
-      # unsigned one there -- and make_manifest.py then hashes the file that
-      # will actually be published.
-      - name: Use the signed exe
-        if: inputs.sign || startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
-        run: |
-          $signed = Get-ChildItem signed -Recurse -Filter IdleonAutomator.exe |
-                    Select-Object -First 1
-          if (-not $signed) { throw "SignPath returned no IdleonAutomator.exe" }
-          Copy-Item $signed.FullName dist/IdleonAutomator.exe -Force
+          # The artifact configuration declares <zip-file><pe-file
+          # path="IdleonAutomator.exe">, so the exe must be submitted zipped,
+          # at the root of the archive and on its own.
+          Compress-Archive -Path dist/IdleonAutomator.exe `
+                           -DestinationPath signing-input.zip -Force
+
+          Submit-SigningRequest `
+            -InputArtifactPath  signing-input.zip `
+            -ApiToken           $env:SIGNPATH_API_TOKEN `
+            -OrganizationId     'abf18e59-6fa4-4beb-b124-1fd46fd1264f' `
+            -ProjectSlug        'automater-bot' `
+            -SigningPolicySlug  'Test_signing' `
+            -OutputArtifactPath signed.zip `
+            -WaitForCompletion
+
+          Expand-Archive signed.zip -DestinationPath signed -Force
+          $exe = Get-ChildItem signed -Recurse -Filter IdleonAutomator.exe |
+                 Select-Object -First 1
+          if (-not $exe) { throw "SignPath returned no IdleonAutomator.exe" }
+
+          # dist/ holds what gets shipped, so the signed binary replaces the
+          # unsigned one and make_manifest.py hashes what will be published.
+          Copy-Item $exe.FullName dist/IdleonAutomator.exe -Force
           "replaced dist/IdleonAutomator.exe with the signed build"
 
       # Runs in both cases. On an unsigned build it reports "signature: NONE",
@@ -146,11 +132,11 @@ jobs:
           "exe    : {0:N1} MB" -f ($exe.Length / 1MB)
           "sha256 : " + (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
           $sig = Get-AuthenticodeSignature $exe.FullName
-          "signed : $($sig.Status)  $($sig.SignerCertificate.Subject)"
+          "status : $($sig.Status)"
+          if ($sig.SignerCertificate) { "signer : $($sig.SignerCertificate.Subject)" }
           Get-Content dist/version.json
 
-      - name: Upload release artifact
-        uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7
         with:
           name: IdleonAutomator
           path: |
