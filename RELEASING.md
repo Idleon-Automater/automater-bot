@@ -35,17 +35,28 @@ Takes a couple of minutes. At the end it prints the four numbers you need:
 It also writes `dist/version.json` with a hash that is guaranteed to match the exe beside it.
 Never hand-compute that hash.
 
-**Once code signing is in place, this step becomes three:**
+### 2b. …or build it signed, in CI
 
-```
-python tools/build_exe.py     # produces the exe
-<your signing step>           # rewrites it -- the hash changes here
-python tools/make_manifest.py # re-hashes the SIGNED exe
-```
+A local build is **unsigned**, and an unsigned release makes every user click through
+SmartScreen. For a real release, build in CI instead:
 
-Signing appends to the executable, so a hash taken before it describes a file nobody will
-download. `make_manifest.py` reports whether Windows sees a valid signature, so a build you
-meant to sign cannot quietly ship unsigned.
+**Actions → build → Run workflow → tick "sign" → Run.**
+
+That runs build → sign → hash → upload on a clean Windows runner, and the `IdleonAutomator`
+artifact it produces contains the signed exe and a `version.json` whose hash matches it.
+Download that artifact and use those two files for steps 3–5 below, in place of anything in
+your local `dist/`.
+
+The order is not cosmetic: signing rewrites the executable. Measured on a real request, the
+artifact hash changed from `80a893a1…` to `6421e1f6…` through signing, so a manifest written
+beforehand describes a file nobody will ever download.
+
+**Signing is deliberately opt-in** — ordinary pushes build but do not sign, so requests are
+not spent proving that the code still compiles.
+
+**Note:** CI resolves dependencies fresh, so a CI-built exe is not byte-identical to a local
+one and is usually a slightly different size. Whatever you upload is what the landing page's
+size and SHA-256 must describe.
 
 ### 3. Write the release notes
 
