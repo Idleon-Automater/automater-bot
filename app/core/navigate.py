@@ -393,6 +393,29 @@ class Navigator:
         with mss.mss() as sct:
             return np.asarray(sct.grab(mon))[:, :, :3]
 
+    def entrance_visible(self, loc):
+        """
+        Is the task's entrance on screen right now?
+
+        One look, no clicking.  If it is there, the character is already
+        standing on the right map and the whole map-and-teleport routine can be
+        skipped -- which is the difference between spending a teleport to
+        arrive somewhere you already are, and simply opening the thing.
+
+        A single frame on purpose.  This runs before every task, and a miss is
+        harmless: it falls through to travelling, which is what would have
+        happened anyway.  Being slow to say "no" would cost more than the
+        occasional unnecessary trip.
+        """
+        import cv2
+
+        if not loc.entry_icon or not os.path.exists(loc.entry_icon):
+            return False
+        tpl = cv2.imread(loc.entry_icon)
+        if tpl is None:
+            return False
+        return find_icon(self._grab(), tpl) is not None
+
     def click_entry(self, loc, tries=3):
         """
         Find the task's entrance in the world and open it.
@@ -491,9 +514,6 @@ def ensure_at(task, rect, clicker, log=None):
         # original reason rather than inventing a navigation failure.
         raise Blocked(first_reason)
 
-    say(f"travelling to {loc.map_name or f'world {loc.world}'}"
-        + (" (costs a teleport)" if loc.costs_teleport else ""))
-
     if not loc.via_town and not loc.map_icon:
         raise Blocked(
             f"{task.name} is reached through its own map, but the marker for "
@@ -504,6 +524,32 @@ def ensure_at(task, rect, clicker, log=None):
 
     nav = Navigator(rect, clicker)
     _focus_game()
+
+    # A task can start from three places, and only the first two used to be
+    # handled: already inside it (can_run passed above), somewhere else
+    # entirely (travel, below), or STANDING ON THE RIGHT MAP with the thing
+    # unopened.  That third case went the long way round -- open the map,
+    # teleport to where the character already was, click the entrance -- which
+    # spends a teleport to arrive nowhere and, because the teleport is a no-op
+    # when you are already in that world, often needed the bounce fallback to
+    # recover.  Looking first costs one screenshot.
+    if nav.entrance_visible(loc):
+        say("already on the right map -- opening it")
+        try:
+            nav.click_entry(loc)
+            task.can_run()
+            say("opened it")
+            return "entered"
+        except Blocked as why:
+            # The shortcut is an optimisation, never a commitment.  A template
+            # can match something that is not the entrance, or the click can
+            # land while the map is still settling -- so if it does not work
+            # out, fall through and travel properly rather than failing a task
+            # the long route would have reached.
+            say(f"that did not open it ({why}) -- travelling properly instead")
+
+    say(f"travelling to {loc.map_name or f'world {loc.world}'}"
+        + (" (costs a teleport)" if loc.costs_teleport else ""))
     say("opening the map")
     nav.open_map()
     if loc.via_town:
