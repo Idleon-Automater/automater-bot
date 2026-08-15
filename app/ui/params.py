@@ -14,8 +14,9 @@ like a valid choice.  Ticking a box that says "no limit" cannot be misread.
 """
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import (QCheckBox, QDoubleSpinBox, QFormLayout, QLabel,
-                               QSpinBox, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox,
+                               QFormLayout, QLabel, QSpinBox, QVBoxLayout,
+                               QWidget)
 
 
 class ParamEditor(QWidget):
@@ -80,6 +81,20 @@ class ParamEditor(QWidget):
                     w.setToolTip("Only the last task in a list can run forever")
                 continue
 
+            if p.kind == "choice":
+                w = QComboBox()
+                w.addItems([str(c) for c in p.choices])
+                # Select by text, not by index: a saved list stores the option
+                # the user picked, so it survives the choices being reordered.
+                i = w.findText(str(value))
+                w.setCurrentIndex(i if i >= 0 else 0)
+                w.currentIndexChanged.connect(self._emit)
+                if p.help:
+                    w.setToolTip(p.help)
+                self._rows[p.name] = (p, w, None)
+                self.form.addRow(p.label, w)
+                continue
+
             if p.kind == "minutes":
                 spin = QDoubleSpinBox()
                 spin.setDecimals(0)
@@ -126,6 +141,8 @@ class ParamEditor(QWidget):
                 out[name] = None                       # unlimited
             elif p.kind == "bool":
                 out[name] = w.isChecked()
+            elif p.kind == "choice":
+                out[name] = w.currentText()
             else:
                 out[name] = w.value()
         return out

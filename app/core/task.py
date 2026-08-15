@@ -52,8 +52,13 @@ class Param:
 
     name: str                              # attribute set on the task
     label: str                             # shown in the window
-    kind: str = "int"                      # "int" | "minutes" | "bool"
+    kind: str = "int"                      # "int" | "minutes" | "bool" | "choice"
     default: Any = None
+    # For kind="choice": the options offered, in the order they are shown.
+    # Stored as the STRING the user picked rather than an index, so a list
+    # saved today still means the same thing if the options are ever
+    # reordered -- an index would silently start pointing at its neighbour.
+    choices: list = field(default_factory=list)
     minimum: Optional[float] = None
     maximum: Optional[float] = None
     allow_unlimited: bool = False          # None means "no limit"
@@ -75,6 +80,12 @@ class Param:
             return None
         if self.kind == "bool":
             return bool(value)
+        if self.kind == "choice":
+            # An unrecognised value falls back to the default rather than being
+            # passed through: a saved list naming an option that no longer
+            # exists should start at something valid, not carry a string no
+            # task knows how to act on.
+            return value if value in self.choices else self.default
         value = float(value) if self.kind == "minutes" else int(value)
         if self.minimum is not None:
             value = max(self.minimum, value)
