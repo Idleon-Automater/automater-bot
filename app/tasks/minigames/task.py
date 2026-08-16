@@ -19,8 +19,9 @@ darts about +/-20 ms -- and that difference lives entirely inside the engines.
 
 import os
 import sys
+import time
 
-from core.navigate import Location
+from core.navigate import Location, Navigator
 from core.streaming import EngineRun
 from core.task import Blocked, Param, Progress, Result, Task
 from . import prompt
@@ -195,8 +196,8 @@ class HoopsTask(_MinigameTask):
         Param("games", "Games to play", "int", default=1,
               minimum=1, maximum=50, allow_unlimited=True,
               governs_endless=True,
-              help="More than one needs the exit-and-wait loop, which is "
-                   "built for Throwy Darts but not yet for Swishy Hoops."),
+              help="The bot claims the points, waits out the cooldown and "
+                   "starts again. No limit = keep going until you stop it."),
     ]
 
     nominal_seconds = 180.0
@@ -218,24 +219,18 @@ class HoopsTask(_MinigameTask):
         self.max_shots = None          # the engine still takes one; unused
 
     def can_run(self):
-        # Darts has the whole exit -> wait out the cooldown -> re-enter loop,
-        # validated against a recording.  Hoops has none of it: no exit press,
-        # no entry sprite located on the World 1 map, no cooldown read.  Saying
-        # so here is better than starting a game that simply stops after one
-        # round while the list waits for an "endless" task that ended.
-        if self.games != 1:
-            raise Blocked(
-                "more than one game in a row is not built for Swishy Hoops "
-                "yet -- it needs the exit, cooldown and re-enter loop that "
-                "Throwy Darts has. Set Games to play to 1")
-        super().can_run()
-
-    def can_run(self):
+        # There were TWO of these, and the second silently replaced the first,
+        # so the guard it contained never ran once.  Merged into one.
+        #
         # The prompt covers the court, so the "is Swishy Hoops on screen?"
         # check refuses the exact state run() exists to clear.  That is not a
         # harmless refusal: the prompt stays open, and an open prompt blocks
         # the map, so every later task in the list fails to travel too.  One
         # task declining to start took the whole run down with it.
+        #
+        # The other half -- refusing games != 1 -- is gone rather than merged,
+        # because the exit-and-re-enter loop it was waiting for now exists
+        # below.
         try:
             cam, _rect = self._camera()
         except RuntimeError as e:
@@ -243,39 +238,128 @@ class HoopsTask(_MinigameTask):
         frame, _ = cam.grab()
         if prompt.find_yes(frame):
             return
+        # More than one game means entering from the map is part of the job, so
+        # requiring hoops to be on screen already would refuse the very mode
+        # that does not need it.  Same reasoning as darts.
+        if self.games != 1:
+            return
         super().can_run()
+
+    # How long to keep trying to get back in between games.  The cooldown
+    # grows to about 15 minutes, so this allows for it plus room to spare.
+    REENTER_TIMEOUT_S = 1200.0
+    REENTER_POLL_S = 20.0
+
+    def _reenter(self, cam, rect, clicker):
+        """
+        Get back onto the court after exiting.  Yields log lines.
+
+        Deliberately does NOT read the cooldown timer.  `prompt.cooldown_at`
+        is calibrated against the dart entrance, and the hoop is a different
+        sprite at a different offset -- reusing those numbers here would be
+        guessing at geometry nobody has measured.  Trying the door instead
+        needs no calibration and answers the same question: if the click opens
+        something, it was ready; if nothing happens, it was not.
+        """
+        nav = Navigator(rect, clicker)
+        waited = 0.0
+        while waited <= self.REENTER_TIMEOUT_S:
+            frame, _ = cam.grab()
+            if minigame.classify(frame, cam) == self.kind:
+                yield Progress("back on the court")
+                return True
+            if prompt.find_yes(frame):
+                # The question is already up; answering it is the way in.
+                answered = []
+                prompt.confirm(cam, rect, clicker,
+                               log=lambda m: answered.append(m))
+                for line in answered:
+                    yield Progress(line)
+                continue
+
+            seen = nav.entrance_visible(self.location)
+            if seen is None:
+                yield Progress("cannot see the hoop from here - stopping the "
+                               "queue rather than clicking a guessed spot")
+                return False
+            try:
+                nav.click_entry(self.location)
+            except Blocked:
+                pass          # on cooldown, or the click landed early
+            time.sleep(2.0)
+
+            frame, _ = cam.grab()
+            if prompt.find_yes(frame) or \
+                    minigame.classify(frame, cam) == self.kind:
+                continue      # the loop top will finish letting us in
+
+            if waited == 0.0:
+                yield Progress("hoops is not ready yet (cooldown) - waiting")
+            time.sleep(self.REENTER_POLL_S)
+            waited += self.REENTER_POLL_S
+
+        yield Progress(f"gave up waiting to re-enter after "
+                       f"{self.REENTER_TIMEOUT_S / 60:.0f} minutes")
+        return False
 
     def run(self, stop=None):
         cam, rect = self._camera()
         cfg = hoops.load_config()
+        clicker = _input.Clicker()
         stopping = (lambda: bool(stop and stop()))
 
-        # Clicking the basketball only asks the question; the game starts when
-        # the green answer is clicked.  Harmless when there is no prompt --
-        # which is the case whenever the run began already on the court.
-        answered = []
-        prompt.confirm(cam, rect, _input.Clicker(),
-                       log=lambda m: answered.append(m))
-        for line in answered:
-            yield Progress(line)
+        played = 0
+        best = 0
+        while self.games is None or played < self.games:
+            if stopping():
+                break
+            if played:
+                # Between games: back out to the map and in again.  Only after
+                # the first, because the first game is entered by the normal
+                # travel step before run() is ever called.
+                ok = yield from self._reenter(cam, rect, clicker)
+                if not ok:
+                    break
+            played += 1
+            if self.games != 1:
+                yield Progress(f"--- game {played}"
+                               + (f" of {self.games}" if self.games else "")
+                               + " ---")
 
-        engine = EngineRun(lambda: hoops.run(
-            cam, cfg, score=self.score, max_shots=self.max_shots,
-            max_score=self.max_score, should_stop=stopping))
+            # Clicking the basketball only asks the question; the game starts
+            # when the green answer is clicked.  Harmless when there is no
+            # prompt -- the case whenever the run began already on the court.
+            answered = []
+            prompt.confirm(cam, rect, clicker,
+                           log=lambda m: answered.append(m))
+            for line in answered:
+                yield Progress(line)
 
-        for line in engine.lines():
-            yield Progress(line)
-        engine.raise_if_failed()
+            engine = EngineRun(lambda: hoops.run(
+                cam, cfg, score=self.score, max_shots=self.max_shots,
+                max_score=self.max_score, should_stop=stopping))
 
-        # Claim the points before anything else runs.  Skipped when the user
-        # stopped the run: the panic key means stop touching the game, not
-        # press one more button.
-        if not stopping():
+            for line in engine.lines():
+                yield Progress(line)
+            engine.raise_if_failed()
+            r = engine.result
+            if r:
+                best = max(best, r[0] if isinstance(r, (list, tuple)) else 0)
+
+            # Claim the points before anything else runs.  Skipped when the
+            # user stopped: the panic key means stop touching the game, not
+            # press one more button.
+            if stopping():
+                break
             claimed = []
-            prompt.claim_and_exit(cam, rect, _input.Clicker(),
+            prompt.claim_and_exit(cam, rect, clicker,
                                   log=lambda m: claimed.append(m))
             for line in claimed:
                 yield Progress(line)
+
+        if self.games != 1:
+            self._summary = (f"Swishy Hoops: {played} game(s)"
+                             + (f", best score {best}" if best else ""))
 
         if engine.result:
             shots, made, score = engine.result
