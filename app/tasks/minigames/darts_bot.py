@@ -207,6 +207,9 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
     # noisy screen cannot spin here forever, and reset after every throw so the
     # allowance is per-throw rather than per-run.
     refits = 0
+    # Consecutive looks at an unreadable wind readout.  After a couple, the
+    # dart is thrown at a guessed wind rather than surrendered unaimed.
+    wind_blind = 0
     throws = bullseyes = 0
     lat_hist = []
     stalls = 0      # cycles that produced no throw; bounded so it cannot spin
@@ -398,6 +401,7 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
         # Prefer the exact magnitude off the HUD; the difficulty-derived range
         # is a 40% band and was worth ~12 px of landing spread on its own.
         dir_unknown = False
+        blind_wind = False
         winds = V.wind_candidates_exact(difficulty, wind_dir, wind_mph)
         exact = winds is not None
         if winds is None:
@@ -411,14 +415,34 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
             dir_unknown = True
         elif wind_dir is None and V.wind_readout_present(frame0, cam):
             # Wind-coloured pixels are in the HUD but neither the number nor the
-            # arrow parsed.  This is the case that cost this run: a real 8 mph
-            # wind read as "none", the planner assumed calm, and the dart missed
-            # by 25-80 px.  Absence of a *reading* is not absence of wind.
-            print(f"[Darts] a wind readout is on screen but unreadable "
-                  f"(see wind_unknown/) - refusing to throw blind")
-            time.sleep(random.uniform(0.75, 1.25))
-            stalls += 1
-            continue
+            # arrow parsed.  Absence of a *reading* is not absence of wind: a
+            # real 8 mph wind once read as "none", the planner assumed calm, and
+            # the dart missed by 25-80 px.
+            #
+            # Worth re-looking a couple of times, since the readout is often
+            # mid-redraw.  But refusing forever is what makes this expensive:
+            # the run stalls, and the stall handler eventually spends a dart on
+            # an UNAIMED click just to re-roll the board.  That throws away a
+            # dart AND the streak for nothing.
+            #
+            # The aim fit and platform height are both good here -- only the
+            # wind is unknown.  So once re-looking has failed, guess the wind
+            # from the difficulty and throw a properly AIMED dart at it.  It is
+            # the same dart either way; aimed, it can still land red.
+            wind_blind += 1
+            if wind_blind <= 2:
+                print(f"[Darts] a wind readout is on screen but unreadable "
+                      f"(see wind_unknown/) - looking again "
+                      f"({wind_blind}/2)")
+                time.sleep(random.uniform(0.75, 1.25))
+                stalls += 1
+                continue
+            print(f"[Darts] wind still unreadable - aiming with the "
+                  f"difficulty-derived guess rather than wasting the dart")
+            winds = V.wind_candidates(difficulty, 0.0)
+            exact = False
+            dir_unknown = True
+            blind_wind = True
         elif wind_dir is None:
             # Genuinely no readout at all: the game draws nothing when the wind
             # is zero.  Do NOT infer wind from the difficulty here:
@@ -464,7 +488,12 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
             stalls += 1
             continue
 
-        if wind_dir is None and dir_unknown:
+        if blind_wind:
+            # Never let a guessed wind read like a measured one in the log.
+            # The distinction is the difference between a throw that should
+            # have landed and one that was always a long shot.
+            wind_txt = "GUESSED from difficulty (readout unreadable)"
+        elif wind_dir is None and dir_unknown:
             # Do NOT print "none" here.  The magnitude was read; it is the arrow
             # that was not, and calling that "none" hid the single largest
             # source of error in the last three runs.
@@ -602,6 +631,7 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
 
         last_plat_y = None        # the game re-rolls [144] after every throw
         refits = 0                # the allowance is per throw, not per run
+        wind_blind = 0            # and the wind is re-rolled too, so re-look
         band = D.band_of(actual_y, bounds)
         hit = (band == D.BULLSEYE_BAND)
         if hit:
