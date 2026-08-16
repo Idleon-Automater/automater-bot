@@ -212,7 +212,13 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
     wind_blind = 0
     # The last aim fit that passed both gates, kept so that a dart being spent
     # to break a stall can still be aimed with it rather than thrown blind.
-    last_aim = last_difficulty = last_bounds = None
+    #
+    # `last_good_plat_y` is SEPARATE from `last_plat_y` on purpose.  The latter
+    # is a staleness marker that gets cleared precisely when a capture looks
+    # repeated -- which is the main thing that causes these stalls -- so gating
+    # the aimed burn on it meant the guard could never be true in the case it
+    # was written for.  This one only ever holds the last real reading.
+    last_aim = last_difficulty = last_bounds = last_good_plat_y = None
     throws = bullseyes = 0
     lat_hist = []
     stalls = 0      # cycles that produced no throw; bounded so it cannot spin
@@ -265,9 +271,9 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
             # blind.  Any red landing keeps the streak alive; the earlier
             # version could only ever break it.
             aimed = None
-            if last_aim is not None and last_plat_y is not None:
+            if last_aim is not None and last_good_plat_y is not None:
                 aimed, _h = D.plan_windy(
-                    time.perf_counter() + 0.60, last_aim, last_plat_y,
+                    time.perf_counter() + 0.60, last_aim, last_good_plat_y,
                     last_difficulty, last_bounds,
                     V.wind_candidates(last_difficulty, 0.0),
                     spread=0.0, min_margin=0.0)
@@ -489,6 +495,7 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
             exact = True
 
         plat_y_eff = plat_y
+        last_good_plat_y = plat_y      # survives the staleness clear above
 
         shot, half = D.plan_windy(time.perf_counter() + 0.80, aim, plat_y_eff,
                                   difficulty, bounds, winds)
