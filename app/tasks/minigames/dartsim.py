@@ -211,11 +211,30 @@ def simulate(t_click, aim, plat_y, difficulty=0, bounds=DEFAULT_BOUNDS,
 # at 1.35-17.27 ms over 44 throws, flat across the range with a hard ceiling at
 # one frame.  It is not overhead that can be optimised away; it is when the game
 # notices.  A warm-up SendInput was tried and changed nothing (mean 8.9 -> 10.2).
-LAUNCH_SPREAD_S = 0.0167
+#
+# MEASURED AGAIN over 51 throws (run of 2026-08-15): min 0.66, mean 9.50,
+# max 17.41 ms -- and 3 of the 51 exceeded 16.7.  Two of those three are the
+# only unexplained misses of that run's low-difficulty stretch:
+#
+#     throw 4   send 17.32 ms   landed -25 px   MISS
+#     throw 5   send 17.41 ms   landed -21 px   MISS
+#     throw 14  send 16.82 ms   landed +23 px   bullseye (lucky)
+#
+# So one frame is the shape of the distribution but not its bound: the click
+# can miss a poll and land in the next frame.  Planning to exactly 16.7 leaves
+# those throws outside the guarantee, which is precisely where they landed.
+# 0.018 covers the observed maximum with a little room.
+#
+# The cost is real -- a wider requirement means fewer valid plans, so more
+# high-difficulty throws fall back to single-instant.  That is the right trade:
+# the streak has to be won below d~15, where windows were +/-10-26 ms and can
+# afford the extra millisecond, and above that band it is unreachable anyway.
+LAUNCH_SPREAD_S = 0.018
 
 
 def plan_windy(t_from, aim, plat_y, difficulty, bounds, winds,
-               dt=0.002, horizon=None, spread=LAUNCH_SPREAD_S):
+               dt=0.002, horizon=None, spread=LAUNCH_SPREAD_S,
+               min_margin=None):
     """
     Plan a throw that lands in the red band for EVERY candidate wind.
 
@@ -240,6 +259,11 @@ def plan_windy(t_from, aim, plat_y, difficulty, bounds, winds,
     # fraction of the 2.2-3.7 s aim period, so an interior point cannot be worse
     # than both ends.
     offsets = (0.0, spread * 0.5, spread) if spread > 0 else (0.0,)
+    # `min_margin=0` asks for the best shot available rather than a safe one.
+    # Meaningless as a plan, but the right question when a dart is going to be
+    # spent regardless -- see the burn path in darts_bot.
+    if min_margin is None:
+        min_margin = SAFE_MARGIN
 
     best = None
     t = t_from
@@ -255,7 +279,7 @@ def plan_windy(t_from, aim, plat_y, difficulty, bounds, winds,
                     worst = th
             if worst is None:
                 break
-        if worst is not None and worst.margin >= SAFE_MARGIN:
+        if worst is not None and worst.margin >= min_margin:
             if best is None or worst.margin > best[1].margin:
                 best = (t, worst)
         t += dt

@@ -210,6 +210,9 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
     # Consecutive looks at an unreadable wind readout.  After a couple, the
     # dart is thrown at a guessed wind rather than surrendered unaimed.
     wind_blind = 0
+    # The last aim fit that passed both gates, kept so that a dart being spent
+    # to break a stall can still be aimed with it rather than thrown blind.
+    last_aim = last_difficulty = last_bounds = None
     throws = bullseyes = 0
     lat_hist = []
     stalls = 0      # cycles that produced no throw; bounded so it cannot spin
@@ -249,10 +252,36 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
         # darts fixes nothing and the hard stop below should still fire.
         if burn_on_stall and stalls >= 4 and burns < max_burns and not dry:
             burns += 1
-            print(f"[Darts] stuck for {stalls} cycles with lives left - "
-                  f"spending a dart to re-roll the wind and platform "
-                  f"({burns}/{max_burns} this run).")
-            clicker.click_at(cx, cy, time.perf_counter() + 0.20)
+            # The dart is going to be spent either way, so aim it.  This used
+            # to be a bare click at "now + 0.2 s", landing at a random point in
+            # a 100-130 deg/s sweep -- a certain loss of the dart AND the
+            # streak, for nothing but a re-roll.
+            #
+            # The last good aim and platform reading are usually only a second
+            # old.  Re-planning against them with the safety margin dropped to
+            # zero asks a different question -- not "is there a shot that is
+            # certainly red" but "which instant is LEAST bad" -- and that is
+            # exactly the right question when the alternative is throwing
+            # blind.  Any red landing keeps the streak alive; the earlier
+            # version could only ever break it.
+            aimed = None
+            if last_aim is not None and last_plat_y is not None:
+                aimed, _h = D.plan_windy(
+                    time.perf_counter() + 0.60, last_aim, last_plat_y,
+                    last_difficulty, last_bounds,
+                    V.wind_candidates(last_difficulty, 0.0),
+                    spread=0.0, min_margin=0.0)
+            if aimed is not None:
+                print(f"[Darts] stuck for {stalls} cycles with lives left - "
+                      f"spending a dart, but AIMED at the best available shot "
+                      f"(predicted y={aimed.hit_y:.0f}, margin "
+                      f"{aimed.margin:.0f}px) ({burns}/{max_burns} this run).")
+                clicker.click_at(cx, cy, aimed.t0 - latency)
+            else:
+                print(f"[Darts] stuck for {stalls} cycles with lives left - "
+                      f"no usable aim to plan with, spending a dart blind "
+                      f"({burns}/{max_burns} this run).")
+                clicker.click_at(cx, cy, time.perf_counter() + 0.20)
             throws += 1
             streak = 0
             stalls = 0
@@ -358,6 +387,11 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
                   f"({refits}/{MAX_REFITS})")
             time.sleep(random.uniform(0.30, 0.55))
             continue
+
+        # Remember the last fit that cleared both gates.  A stall-breaking dart
+        # is thrown against this rather than blind, and it is at most a couple
+        # of seconds old by then.
+        last_aim, last_difficulty, last_bounds = aim, difficulty, bounds
 
         # The fit's own pivot solve is preferred: it comes from the same
         # measurement that is already checked against two source constants,
