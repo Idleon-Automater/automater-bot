@@ -220,6 +220,7 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
     # the aimed burn on it meant the guard could never be true in the case it
     # was written for.  This one only ever holds the last real reading.
     last_aim = last_difficulty = last_bounds = last_good_plat_y = None
+    last_good_plat_x = None      # None -> simulate falls back to the formula
 
     # Tracks the display's 60 Hz phase from capture timestamps, so throws can
     # be planned on instants the click can actually hit.  See
@@ -508,6 +509,22 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
         plat_y_eff = plat_y
         last_good_plat_y = plat_y      # survives the staleness clear above
 
+        # MEASURE the launch x rather than deriving it from the difficulty.
+        # dartsim.platform_x is only the deterministic half; the game adds a
+        # random term worth +/-32 px at d=5 and +/-68 px at d=12, and launch x
+        # sets the flight LENGTH, so an error there changes how long gravity
+        # acts.  That lifts or drops every landing by the same amount whichever
+        # way the aim was sweeping -- which is exactly the residual left behind
+        # once the click timing was locked to the refresh.
+        meas_x, _my = V.platform_xy(frame0, cam)
+        if meas_x is not None:
+            plat_x_eff = meas_x
+            last_good_plat_x = meas_x
+        else:
+            # Keep the last real reading rather than silently dropping back to
+            # the formula mid-run: the plank does not teleport between throws.
+            plat_x_eff = last_good_plat_x
+
         # The click goes out at t0 - latency, so the reachable LAUNCH instants
         # are the refresh grid shifted by the latency.  Planning on that grid
         # is the whole point: it replaces "a time we cannot hit, plus a frame
@@ -523,7 +540,8 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
 
         shot, half = D.plan_windy(time.perf_counter() + 0.80, aim, plat_y_eff,
                                   difficulty, bounds, winds,
-                                  spread=spread_s, align=align)
+                                  spread=spread_s, align=align,
+                                  plat_x=plat_x_eff)
         frame_robust = shot is not None
         blind_dir = False
         if shot is None and dir_unknown:
@@ -537,7 +555,8 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
             shot, half = D.plan_windy(time.perf_counter() + 0.80, aim,
                                       plat_y_eff, difficulty, bounds,
                                       V.wind_candidates(difficulty, 0.0),
-                                      spread=spread_s, align=align)
+                                      spread=spread_s, align=align,
+                                      plat_x=plat_x_eff)
             blind_dir = shot is not None
         if shot is None:
             # No click survives the whole frame window.  Past roughly d=35 that
@@ -547,7 +566,8 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
             # back to the best single-instant plan and take the coin flip.
             shot, half = D.plan_windy(time.perf_counter() + 0.80, aim,
                                       plat_y_eff, difficulty, bounds, winds,
-                                      spread=0.0, align=align)
+                                      spread=0.0, align=align,
+                                      plat_x=plat_x_eff)
         if shot is None:
             print(f"[Darts] no throw stays red across the whole wind range "
                   f"(d={difficulty}, {len(winds)} candidates) - re-observing")

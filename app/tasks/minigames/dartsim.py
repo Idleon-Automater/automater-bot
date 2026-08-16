@@ -170,16 +170,23 @@ def band_of(y, bounds):
 
 
 def simulate(t_click, aim, plat_y, difficulty=0, bounds=DEFAULT_BOUNDS,
-             wind_x=0.0, wind_y=0.0, max_steps=600):
+             wind_x=0.0, wind_y=0.0, max_steps=600, plat_x=None):
     """
     Throw at `t_click` and follow the dart until it meets the board or is lost.
 
-    `plat_y` is [144]; `plat_x` comes from the difficulty.
+    `plat_y` is [144].  `plat_x` is [143]: pass the MEASURED value when there
+    is one, because the formula below is only the deterministic half of it.
+    The game adds `350 * randFloat(...) * d/(d+50)` on top, which is worth
+    +/-32 px at d=5 and +/-68 px at d=12 -- and launch x sets the LENGTH of the
+    flight, so an error there changes how long gravity acts and lifts or drops
+    every landing regardless of when the click happened.  Falling back to the
+    formula keeps old callers working; it does not make them right.
     """
     theta = aim.angle(t_click)
     th = math.radians(theta)
 
-    x = round(platform_x(difficulty) + LAUNCH_DX)
+    px = platform_x(difficulty) if plat_x is None else plat_x
+    x = round(px + LAUNCH_DX)
     y = round(plat_y + LAUNCH_ARM * math.sin(th) + LAUNCH_DY)
     vx = DART_SPEED * math.cos(th)
     vy = DART_SPEED * math.sin(th)
@@ -234,7 +241,7 @@ LAUNCH_SPREAD_S = 0.018
 
 def plan_windy(t_from, aim, plat_y, difficulty, bounds, winds,
                dt=0.002, horizon=None, spread=LAUNCH_SPREAD_S,
-               min_margin=None, align=None):
+               min_margin=None, align=None, plat_x=None):
     """
     Plan a throw that lands in the red band for EVERY candidate wind.
 
@@ -290,7 +297,8 @@ def plan_windy(t_from, aim, plat_y, difficulty, bounds, winds,
         worst = None
         for off in offsets:
             for wx, wy in winds:
-                th = simulate(t + off, aim, plat_y, difficulty, bounds, wx, wy)
+                th = simulate(t + off, aim, plat_y, difficulty, bounds, wx, wy,
+                              plat_x=plat_x)
                 if not th.bullseye:
                     worst = None
                     break
@@ -313,7 +321,7 @@ def plan_windy(t_from, aim, plat_y, difficulty, bounds, winds,
         k = step
         while abs(k) < 0.20:
             if all(simulate(t0 + k + off, aim, plat_y, difficulty, bounds,
-                            wx, wy).bullseye
+                            wx, wy, plat_x=plat_x).bullseye
                    for wx, wy in winds for off in offsets):
                 k += step
             else:
