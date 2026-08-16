@@ -32,6 +32,23 @@ import dartvision as V
 import minigame
 from clicker import sleep_until
 
+# How good an aim fit has to be before a dart is spent on it.
+#
+# `aim_angle_is_trustworthy` rejects nonsense at 2.0 deg; this is the higher
+# bar for actually throwing.  A healthy fit measures about 0.35 deg, and the
+# throw that ended the best run so far was taken on 0.83 -- inside the old
+# gate, obviously worse than usual, and it missed.  0.55 sits between the two.
+GOOD_FIT_RMS = 0.55
+
+# Above this difficulty the streak is already unreachable -- the red band is
+# narrower than one frame of aim sweep -- so a merely-usable fit is thrown on
+# rather than waited out.  Below it, waiting is nearly free and a miss is not.
+STREAK_BAND_D = 15
+
+# Bounded so a persistently noisy screen re-measures a few times and then gets
+# on with it, instead of deadlocking the way earlier over-strict gates did.
+MAX_REFITS = 3
+
 
 def landed_dart_y(before, after, cam):
     """
@@ -186,6 +203,10 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
                            # see DARTS_NOTES.  Comparable to hoops' 89 ms,
                            # unlike the -231 ms the contaminated fits gave.
     best = streak
+    # Re-measurements of a poor-but-usable aim fit.  Bounded so a persistently
+    # noisy screen cannot spin here forever, and reset after every throw so the
+    # allowance is per-throw rather than per-run.
+    refits = 0
     throws = bullseyes = 0
     lat_hist = []
     stalls = 0      # cycles that produced no throw; bounded so it cannot spin
@@ -307,6 +328,32 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
                   f"refusing to throw")
             time.sleep(random.uniform(0.75, 1.25))
             stalls += 1
+            continue
+
+        # A fit can clear `aim_angle_is_trustworthy` and still be poor.  That
+        # gate rejects nonsense (rms < 2.0 deg); a normal fit lands near
+        # 0.35 deg, and the throw that broke the best run so far was taken on
+        # 0.83 -- comfortably "trustworthy", visibly worse than usual, and it
+        # missed.
+        #
+        # The costs are wildly asymmetric.  Re-measuring costs about a second,
+        # and the aim keeps sweeping meanwhile.  Throwing on a mediocre fit
+        # costs a dart, resets the streak, AND raises `[160]` permanently,
+        # which widens and speeds the sweep for every throw afterwards.  So
+        # when the streak is still winnable, spend the second.
+        #
+        # Only while it IS winnable: past d~15 the red band is narrower than
+        # one frame of sweep, nine in a row is gone, and stalling for a better
+        # fit would just burn the run's remaining darts on the clock.  There,
+        # take the fit that passed and keep scoring.
+        if (rms > GOOD_FIT_RMS and difficulty <= STREAK_BAND_D
+                and refits < MAX_REFITS):
+            refits += 1
+            print(f"[Darts] aim fit is usable but poor (rms={rms:.2f}deg vs "
+                  f"{GOOD_FIT_RMS:.2f} wanted, d={difficulty}, streak={streak})"
+                  f" - re-measuring rather than spending a dart "
+                  f"({refits}/{MAX_REFITS})")
+            time.sleep(random.uniform(0.30, 0.55))
             continue
 
         # The fit's own pivot solve is preferred: it comes from the same
@@ -546,6 +593,7 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
             # clearing it here froze plat_y at 289 for eleven consecutive
             # throws, every one of them aimed at a platform that had moved.
             last_plat_y = None
+            refits = 0            # a dart was spent, so the allowance renews
             streak = 0
             print("        no dart on the board - it missed entirely "
                   "(streak reset)")
@@ -553,6 +601,7 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
             continue
 
         last_plat_y = None        # the game re-rolls [144] after every throw
+        refits = 0                # the allowance is per throw, not per run
         band = D.band_of(actual_y, bounds)
         hit = (band == D.BULLSEYE_BAND)
         if hit:
