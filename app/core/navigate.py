@@ -489,6 +489,12 @@ class Navigator:
         self._click_game(px, py, settle=1.5)
 
 
+# How many times to redo the map-and-teleport sequence before giving up.
+# Opening the map and picking a world are free; only the destination
+# double-click costs a teleport, and it is the step least likely to fail.
+TRAVEL_TRIES = 3
+
+
 def ensure_at(task, rect, clicker, log=None):
     """
     Make sure the character is somewhere `task` can run.
@@ -550,18 +556,42 @@ def ensure_at(task, rect, clicker, log=None):
 
     say(f"travelling to {loc.map_name or f'world {loc.world}'}"
         + (" (costs a teleport)" if loc.costs_teleport else ""))
-    say("opening the map")
-    nav.open_map()
-    if loc.via_town:
-        say(f"double-clicking World {loc.world}")
-        nav.go_to_town(loc.world)
-        say("arrived in town")
-    else:
-        say(f"selecting World {loc.world}")
-        nav.pick_world(loc.world)
-        say("looking for the map marker")
-        nav.go_to_map(loc)
-        say(f"arrived at {loc.map_name or 'the map'}")
+
+    def travel_once():
+        say("opening the map")
+        nav.open_map()
+        if loc.via_town:
+            say(f"double-clicking World {loc.world}")
+            nav.go_to_town(loc.world)
+            say("arrived in town")
+        else:
+            say(f"selecting World {loc.world}")
+            nav.pick_world(loc.world)
+            say("looking for the map marker")
+            nav.go_to_map(loc)
+            say(f"arrived at {loc.map_name or 'the map'}")
+
+    # Retried, because the ways this fails are transient and cost nothing to
+    # redo.  The map closing before the marker is found is the common one: the
+    # map screen is a click away and reopening it spends no teleport, only the
+    # destination double-click does.
+    #
+    # Giving up after one attempt also left the character somewhere it had not
+    # asked to be -- one run selected World 1, lost the map, and abandoned the
+    # task standing in W1 town, having spent a teleport to reach a place with
+    # nothing to do.  Moving to a known map is a fine way to recover a confused
+    # position; it is not a place to stop.
+    for attempt in range(1, TRAVEL_TRIES + 1):
+        try:
+            travel_once()
+            break
+        except Blocked as why:
+            if attempt == TRAVEL_TRIES:
+                raise
+            say(f"{why}")
+            say(f"travel attempt {attempt} of {TRAVEL_TRIES} did not land "
+                f"-- trying again")
+            time.sleep(0.8)
 
     say("looking for the entrance")
     try:
