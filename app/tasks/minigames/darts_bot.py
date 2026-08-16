@@ -31,6 +31,7 @@ import dartsim as D
 import dartvision as V
 import minigame
 from clicker import sleep_until
+from core.frameclock import PERIOD as FRAME_S, FrameClock
 
 # How good an aim fit has to be before a dart is spent on it.
 #
@@ -219,6 +220,11 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
     # the aimed burn on it meant the guard could never be true in the case it
     # was written for.  This one only ever holds the last real reading.
     last_aim = last_difficulty = last_bounds = last_good_plat_y = None
+
+    # Tracks the display's 60 Hz phase from capture timestamps, so throws can
+    # be planned on instants the click can actually hit.  See
+    # core/frameclock.py for why this is the binding constraint on the streak.
+    fclock = FrameClock()
     throws = bullseyes = 0
     lat_hist = []
     stalls = 0      # cycles that produced no throw; bounded so it cannot spin
@@ -307,6 +313,11 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
         frame0 = None
         while time.perf_counter() < t_end:
             frame, t = cam.grab()
+            # Every grab is a free reading of the refresh phase: mss is
+            # vsync-locked (R=0.984, phase sd 0.47 ms over 400 samples), so
+            # these timestamps say where the frame boundary is without costing
+            # a single extra capture.
+            fclock.observe(t)
             if frame0 is None:
                 frame0 = frame
             r = V.dart_angle(frame, cam)
@@ -497,8 +508,22 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
         plat_y_eff = plat_y
         last_good_plat_y = plat_y      # survives the staleness clear above
 
+        # The click goes out at t0 - latency, so the reachable LAUNCH instants
+        # are the refresh grid shifted by the latency.  Planning on that grid
+        # is the whole point: it replaces "a time we cannot hit, plus a frame
+        # of uncertainty" with "a time we can hit, plus its jitter".
+        align = None
+        spread_s = D.LAUNCH_SPREAD_S
+        if fclock.locked:
+            ph = fclock.phase()
+            align = (FRAME_S, (ph + latency) % FRAME_S)
+            # What is left is the phase estimate's own scatter, measured at
+            # 0.47 ms sd.  Three sigma of that, not a whole frame.
+            spread_s = 0.0015
+
         shot, half = D.plan_windy(time.perf_counter() + 0.80, aim, plat_y_eff,
-                                  difficulty, bounds, winds)
+                                  difficulty, bounds, winds,
+                                  spread=spread_s, align=align)
         frame_robust = shot is not None
         blind_dir = False
         if shot is None and dir_unknown:
@@ -511,7 +536,8 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
             # than the first assumption.
             shot, half = D.plan_windy(time.perf_counter() + 0.80, aim,
                                       plat_y_eff, difficulty, bounds,
-                                      V.wind_candidates(difficulty, 0.0))
+                                      V.wind_candidates(difficulty, 0.0),
+                                      spread=spread_s, align=align)
             blind_dir = shot is not None
         if shot is None:
             # No click survives the whole frame window.  Past roughly d=35 that
@@ -521,7 +547,7 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
             # back to the best single-instant plan and take the coin flip.
             shot, half = D.plan_windy(time.perf_counter() + 0.80, aim,
                                       plat_y_eff, difficulty, bounds, winds,
-                                      spread=0.0)
+                                      spread=0.0, align=align)
         if shot is None:
             print(f"[Darts] no throw stays red across the whole wind range "
                   f"(d={difficulty}, {len(winds)} candidates) - re-observing")
@@ -550,7 +576,10 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
         # requirement, so it is not comparable to a frame-robust one and reads
         # deceptively large -- a fallback throw printed +/-16 ms next to a real
         # +/-10 ms one.  Say which kind it is.
-        win_txt = (f"window=+/-{half * 1000:.0f}ms" if frame_robust else
+        # Say whether this throw was planned on the refresh grid.  If the send
+        # times below stop being spread across a frame, this is why.
+        win_txt = ("[framelock] " if align is not None else "[unlocked] ")
+        win_txt += (f"window=+/-{half * 1000:.0f}ms" if frame_robust else
                    f"window=+/-{half * 1000:.0f}ms single-instant"
                    f"  [COIN FLIP: no click survives a frame]")
         if blind_dir:
@@ -618,6 +647,15 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
         # window (dartsim.LAUNCH_SPREAD_S), exactly as it already does across
         # the wind range, and `latency` is once again just the game's own lag.
         t_click = shot.t0 - latency
+        if align is not None:
+            # plan_windy returns the WORST-CASE launch across the spread, so
+            # shot.t0 sits a little past the grid instant it was planned from.
+            # Snapping recovers that instant: the offset is under 2 ms against
+            # a half-frame of 8.3, so this can only ever move the click back
+            # onto the point the plan was actually built on.
+            snapped = fclock.snap(t_click)
+            if snapped is not None:
+                t_click = snapped
         if dry:
             throws += 1          # so --shots can end a dry run
             print(f"        would click in {t_click - time.perf_counter():+.3f}s\n")

@@ -234,7 +234,7 @@ LAUNCH_SPREAD_S = 0.018
 
 def plan_windy(t_from, aim, plat_y, difficulty, bounds, winds,
                dt=0.002, horizon=None, spread=LAUNCH_SPREAD_S,
-               min_margin=None):
+               min_margin=None, align=None):
     """
     Plan a throw that lands in the red band for EVERY candidate wind.
 
@@ -265,6 +265,25 @@ def plan_windy(t_from, aim, plat_y, difficulty, bounds, winds,
     if min_margin is None:
         min_margin = SAFE_MARGIN
 
+    # `align` restricts candidates to launch instants the click can actually
+    # produce.  Without it the planner picks a time to 2 ms and the click then
+    # lands anywhere in the following frame, because the game polls input once
+    # per redraw -- so the plan is precise about something we do not control.
+    # Measured consequence over two runs: every throw whose send exceeded the
+    # planner's window missed, 0 for 7, no exceptions.
+    #
+    # With the refresh phase known (core/frameclock.py) the reachable launch
+    # times are a 16.67 ms grid, and searching only those makes the plan
+    # describe what will really happen.  `spread` then covers the phase jitter
+    # (sub-millisecond) rather than a whole frame.
+    step = dt
+    if align is not None:
+        period, phase = align
+        aligned = t_from - (t_from % period) + (phase % period)
+        while aligned < t_from:
+            aligned += period
+        t_from, step = aligned, period
+
     best = None
     t = t_from
     while t < t_from + horizon:
@@ -282,7 +301,7 @@ def plan_windy(t_from, aim, plat_y, difficulty, bounds, winds,
         if worst is not None and worst.margin >= min_margin:
             if best is None or worst.margin > best[1].margin:
                 best = (t, worst)
-        t += dt
+        t += step
 
     if best is None:
         return None, 0.0
