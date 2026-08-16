@@ -138,6 +138,11 @@ class Location:
     entry_icon: Optional[str] = None
     # Template of the task's icon inside the popup the entry opens.
     popup_icon: Optional[str] = None
+    # Optional `f(frame, (x, y)) -> bool`, asked once the entrance has been
+    # located: is the thing showing a cooldown instead of an invitation?
+    # Supplied by the task rather than known here, because what a cooldown
+    # looks like is the task's business -- core has no idea what a minigame is.
+    cooldown_check: Optional[object] = None
     # Only for the long way round: the destination marker on the map view.
     map_icon: Optional[str] = None
 
@@ -406,15 +411,24 @@ class Navigator:
         harmless: it falls through to travelling, which is what would have
         happened anyway.  Being slow to say "no" would cost more than the
         occasional unnecessary trip.
+
+        Returns (x, y, frame) when the entrance is there, or None.  A tuple is
+        truthy and None is falsy, so callers wanting only a yes/no are
+        unaffected -- but the position lets a caller look at what is drawn
+        AROUND the entrance, which is how a cooldown is spotted.
         """
         import cv2
 
         if not loc.entry_icon or not os.path.exists(loc.entry_icon):
-            return False
+            return None
         tpl = cv2.imread(loc.entry_icon)
         if tpl is None:
-            return False
-        return find_icon(self._grab(), tpl) is not None
+            return None
+        frame = self._grab()
+        hit = find_icon(frame, tpl)
+        if hit is None:
+            return None
+        return (hit[0], hit[1], frame)
 
     def click_entry(self, loc, tries=3):
         """
@@ -539,7 +553,19 @@ def ensure_at(task, rect, clicker, log=None):
     # spends a teleport to arrive nowhere and, because the teleport is a no-op
     # when you are already in that world, often needed the bounce fallback to
     # recover.  Looking first costs one screenshot.
-    if nav.entrance_visible(loc):
+    seen = nav.entrance_visible(loc)
+    if seen and getattr(loc, "cooldown_check", None):
+        ex, ey, frame = seen
+        if loc.cooldown_check(frame, (ex, ey)):
+            # Standing in the right place, in front of a thing that cannot be
+            # entered yet.  Travelling is the one response that cannot help,
+            # and it was the response: one run spent a teleport to World 1 and
+            # abandoned the task, because "the entrance did not open" was
+            # indistinguishable from "we are somewhere else".
+            raise Blocked(f"{task.name} is on cooldown -- the countdown is "
+                          f"showing at the entrance, so it cannot be entered "
+                          f"from anywhere yet")
+    if seen:
         say("already on the right map -- opening it")
         try:
             nav.click_entry(loc)

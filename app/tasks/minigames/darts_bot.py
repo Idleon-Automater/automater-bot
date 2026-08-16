@@ -50,6 +50,17 @@ STREAK_BAND_D = 15
 # on with it, instead of deadlocking the way earlier over-strict gates did.
 MAX_REFITS = 3
 
+# The constant gap between what platform_xy reads off the screen and the game's
+# own [143].  Measured at ~+22 px over the low-difficulty throws of one run,
+# where the random term is bounded to a few pixels and the disagreement
+# therefore cannot be the platform genuinely moving.
+PLAT_X_OFFSET = 22.0
+
+# Room on top of the source's hard bound, for the offset above being a little
+# off and for the detector's own pixel noise.  Small on purpose: the point is
+# to reject readings that are impossible, not to wave through unlikely ones.
+PLAT_X_SLACK = 12.0
+
 
 def _plat_x_txt(plat_x, difficulty):
     """
@@ -541,9 +552,40 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
         # way the aim was sweeping -- which is exactly the residual left behind
         # once the click timing was locked to the refresh.
         meas_x, _my = V.platform_xy(frame0, cam)
+
+        # REJECT readings the game could not have produced.  `[143]` is
+        #     300 - 1.5d + 350*randFloat(...)*d/(d+50)
+        # so it cannot sit further from the deterministic part than
+        # 350*d/(d+50) -- which is 0 at d=0 and grows slowly.  A reading
+        # outside that is not an unusual platform, it is a bad measurement.
+        #
+        # This matters because the detector is unreliable in a specific way:
+        # over one run it returned ~320 on half the throws and wild values on
+        # the rest (410 at d=0 where the answer is exactly 300, plus 421, 391,
+        # 192, 182).  The good stretch of that run -- five bullseyes, landing
+        # errors within 13 px -- was entirely throws that read ~320, and every
+        # wild reading missed.  Feeding those straight into the plan is what
+        # turned a -14 px bias into +/-30 px of scatter.
+        #
+        # PLAT_X_OFFSET absorbs the constant gap between the screen reading and
+        # the game's own [143]: measured at about +22 px across the low-
+        # difficulty throws of that run, where the bound is only a few pixels
+        # and the disagreement therefore cannot be the random term.
+        room = 350.0 * difficulty / (difficulty + 50.0) + PLAT_X_SLACK
         if meas_x is not None:
-            plat_x_eff = meas_x
-            last_good_plat_x = meas_x
+            corrected = meas_x - PLAT_X_OFFSET
+            if abs(corrected - D.platform_x(difficulty)) <= room:
+                plat_x_eff = corrected
+                last_good_plat_x = corrected
+            else:
+                # Impossible: keep the last reading that was not, and say so,
+                # because a detector that fails this often is worth watching.
+                plat_x_eff = last_good_plat_x
+                print(f"        platform x read {meas_x:.0f} -> {corrected:.0f}, "
+                      f"which is {abs(corrected - D.platform_x(difficulty)):.0f}px "
+                      f"from the formula against a hard bound of {room:.0f} - "
+                      f"impossible, so using "
+                      f"{'the last good value' if last_good_plat_x is not None else 'the formula'}")
         else:
             # Keep the last real reading rather than silently dropping back to
             # the formula mid-run: the plank does not teleport between throws.

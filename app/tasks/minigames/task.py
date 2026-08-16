@@ -118,6 +118,12 @@ class DartsTask(_MinigameTask):
         via_town=False,
         map_icon=os.path.join(NAV, "map_darts.png"),
         entry_icon=os.path.join(NAV, "entry_darts.png"),
+        # Measured against _dev/darts_cooldown.png: the countdown sits just
+        # above the dart.  Without this, standing on the right map with the
+        # game not yet ready looked exactly like standing on the wrong map,
+        # and the bot travelled -- spending a teleport on the one action that
+        # could never help.
+        cooldown_check=prompt.cooldown_at,
     )
 
     def __init__(self, games=1, **kw):

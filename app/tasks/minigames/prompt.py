@@ -21,6 +21,34 @@ symmetrical; they are not.
 """
 
 import os
+
+# ── Minigame cooldown ─────────────────────────────────────────────────────────
+#
+# After a game ends, the entrance shows a countdown instead of the hand and
+# "TAP TO PLAY".  Measured on a real capture (_dev/darts_cooldown.png, darts on
+# cooldown at 2:33): the timer is white text at x=382..420, y=179..191, with
+# the entry icon centred at (398, 226).  So relative to the entrance it sits:
+#
+#     dx -16..+22      dy -47..-35
+#
+# Taken RELATIVE to the entry icon rather than as fixed coordinates, because
+# the entrance moves with the camera -- the same reason click_entry locates it
+# by template every time instead of remembering where it was.
+#
+# The window is deliberately narrow in x.  "TAP HERE / ENTER SHOP" is also
+# white text on the same screen, 100 px to the right at x=502..546, and a band
+# wide enough to catch it would report a cooldown whenever the shop is visible.
+COOLDOWN_DX = (-34, 40)
+COOLDOWN_DY = (-56, -28)
+
+# The 2:33 sample carried 239 white pixels.  Half of that still needs real
+# glyphs and is far above the handful a stray highlight produces.
+COOLDOWN_MIN_PX = 110
+
+# "2:33" measured 38x12.  These allow a longer countdown ("12:07") while still
+# excluding a player nameplate, which is far wider.
+COOLDOWN_MAX_W = 58
+COOLDOWN_MAX_H = 20
 import time
 
 # The prompt box in game coordinates, generously bounded.  Searching only here
@@ -46,6 +74,56 @@ RED_HUE = 10
 BOX_VALUE_MAX = 70
 BOX_FILL = 0.75                       # solid, not a dark outline
 BOX_MIN = (260, 70)                   # width, height in pixels
+
+
+def cooldown_at(frame, entry_xy):
+    """
+    Is a cooldown countdown showing above the entrance at `entry_xy`?
+
+    Returns True when the timer is there, meaning the minigame cannot be
+    entered no matter where the character stands.
+
+    This distinction is the point.  Without it, "the entrance is on screen but
+    nothing opened" looked identical to "we are in the wrong place", and the
+    bot responded by travelling -- which spent a teleport, left the character
+    somewhere it had no reason to be, and could never have worked, because
+    being elsewhere is not the problem when the game is simply not ready.
+    """
+    import cv2
+    import numpy as np      # noqa: F401  (used for the shape check below)
+
+    ex, ey = entry_xy
+    x0, x1 = ex + COOLDOWN_DX[0], ex + COOLDOWN_DX[1]
+    y0, y1 = ey + COOLDOWN_DY[0], ey + COOLDOWN_DY[1]
+    # The whole window has to be on screen.  Clamping it instead lets the ROI
+    # slide onto the HUD, whose white text ("AUTO", "ATTACKS", the level) reads
+    # as a countdown -- an entrance near the bottom edge then reports a
+    # permanent cooldown.  A clipped window means we cannot see the place the
+    # timer would be, which is "do not know", and the safe answer to that is
+    # "not on cooldown" -- the entry attempt itself will settle it.
+    h, w = frame.shape[:2]
+    if x0 < 0 or y0 < 0 or x1 > w or y1 > h:
+        return False
+    roi = frame[y0:y1, x0:x1]
+    if roi.size == 0:
+        return False
+
+    # White glyphs: almost no saturation, bright.  The same test the game-over
+    # banner uses, and for the same reason -- it is the one thing on this
+    # screen that is reliably colourless.
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    mask = (hsv[:, :, 1] < 40) & (hsv[:, :, 2] > 200)
+    if int(mask.sum()) < COOLDOWN_MIN_PX:
+        return False
+
+    # Count is not enough on its own: OTHER PLAYERS' NAMEPLATES are white text
+    # too, and one standing above the entrance would read as a permanent
+    # cooldown.  A timer is a compact blob -- "2:33" measured 38x12 -- while a
+    # nameplate is much wider ("Grabbypaws" spans ~90 px).  So require the
+    # white to be the right SHAPE as well as present.
+    ys, xs = np.nonzero(mask)
+    bw, bh = xs.max() - xs.min() + 1, ys.max() - ys.min() + 1
+    return bw <= COOLDOWN_MAX_W and bh <= COOLDOWN_MAX_H
 
 
 def find_yes(frame):
