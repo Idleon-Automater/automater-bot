@@ -51,6 +51,30 @@ STREAK_BAND_D = 15
 MAX_REFITS = 3
 
 
+def _plat_x_txt(plat_x, difficulty):
+    """
+    Report the launch x, and how far it is from what the source formula says.
+
+    Worth printing because the two disagree and only one of them can be right.
+    `dartsim.platform_x` is `[143]`, the game's own state; `platform_xy` reads
+    the plank off the screen.  At d=0 the formula's random term is exactly
+    zero, so the formula is EXACT there -- which makes any gap at d=0 a
+    straight measurement of how far the screen reading is from `[143]`, and
+    tells us whether the two are even in the same coordinates.
+
+    Above d=0 a gap is expected: that is the random term the formula omits,
+    bounded by 350*d/(d+50).
+    """
+    if plat_x is None:
+        return "plat_x=formula"
+    formula = D.platform_x(difficulty)
+    gap = plat_x - formula
+    room = 350.0 * difficulty / (difficulty + 50.0)
+    flag = "" if abs(gap) <= room + 1.0 else " <-IMPOSSIBLE"
+    return (f"plat_x={plat_x:.0f}(vs {formula:.0f} formula, "
+            f"{gap:+.0f} of +/-{room:.0f}{flag})")
+
+
 def landed_dart_y(before, after, cam):
     """
     Where the last dart stuck, in game y, or None.
@@ -608,7 +632,7 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
         print(f"[Throw {throws + 1}] streak={streak}/9  d={difficulty} "
               f"(amp {amp:.1f} off {offset:.1f} rms {rms:.2f}deg)  "
               f"wind={wind_txt}  "
-              f"plat_y={plat_y:.0f}  "
+              f"plat_y={plat_y:.0f} {_plat_x_txt(plat_x_eff, difficulty)}  "
               f"angle={shot.angle:+.1f}deg  ->  y={shot.hit_y:.0f} "
               f"(red {bounds[2]:.0f}..{bounds[3]:.0f}, margin {shot.margin:.0f}px)"
               f"  {win_txt}")
