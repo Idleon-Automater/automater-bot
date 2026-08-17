@@ -51,11 +51,13 @@ In `dist/version.json`, fill in `"notes"` — one sentence, shown to users in th
 `web/index.html`, search for **`release block`**. Four values, all next to each other:
 
 - download link → `.../releases/1.0.1/IdleonAutomator.exe`
-- size
+- size — the **binary** MB the build prints as *"put THIS on the landing page"*, not the
+  decimal one. Windows calls MiB "MB", so the decimal figure disagrees with what the user
+  sees beside the downloaded file by about 5%
 - `Version 1.0.1`
 - the SHA-256
 
-All four must match `dist/version.json`.
+The link and the hash must match `dist/version.json` exactly.
 
 ## 5. Upload to R2  — *yours*
 

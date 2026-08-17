@@ -102,10 +102,18 @@ def write(exe=None, out=None, quiet=False, notes=None):
         json.dump(manifest, f, indent=2)
 
     if not quiet:
-        size = os.path.getsize(exe) / 1000 / 1000
+        raw = os.path.getsize(exe)
         sig = signature_status(exe)
         print(f"[Manifest] {out}")
-        print(f"[Manifest] version {VERSION}   {size:.1f} MB")
+        # BINARY megabytes, because that is what the landing page quotes and
+        # what the user will see next to the file afterwards.  Windows labels
+        # MiB as "MB", so a decimal figure (89.4 for this build) disagrees with
+        # Explorer's 85.3 by ~4.6% -- a mismatch that looks like the wrong file
+        # on a page whose whole argument is "check this yourself".
+        print(f"[Manifest] version {VERSION}   "
+              f"{raw / 1048576:.1f} MB  <- put THIS on the landing page")
+        print(f"[Manifest] ({raw:,} bytes; {raw / 1e6:.1f} MB decimal, which is "
+              f"what a browser shows while downloading)")
         print(f"[Manifest] sha256  {manifest['sha256']}")
         if sig == "Valid":
             print("[Manifest] signature: VALID -- hash covers the signed file")
