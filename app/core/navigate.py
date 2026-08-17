@@ -143,6 +143,13 @@ class Location:
     # Supplied by the task rather than known here, because what a cooldown
     # looks like is the task's business -- core has no idea what a minigame is.
     cooldown_check: Optional[object] = None
+    # Where to click, RELATIVE to the middle of the entry template.
+    #
+    # Normally zero: the template is the thing you click.  It exists for
+    # entrances whose clickable part cannot be the template -- the Equinox
+    # mirror animates, so only its static stone crown makes a usable template,
+    # while the part that responds to a click is the glass below it.
+    entry_click_offset: tuple = (0, 0)
     # Only for the long way round: the destination marker on the map view.
     map_icon: Optional[str] = None
 
@@ -481,7 +488,8 @@ class Navigator:
         # treating it as the first made navigation give up after the map steps
         # with "the popup artwork is missing" for an entrance that has no popup.
         if not loc.popup_icon:
-            self._click_game(ex, ey, settle=1.8)
+            ox, oy = getattr(loc, "entry_click_offset", (0, 0))
+            self._click_game(ex + ox, ey + oy, settle=1.8)
             return
 
         # Hover to raise the popup.  Deliberately a move, not a click: the

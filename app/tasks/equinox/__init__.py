@@ -57,7 +57,15 @@ class EquinoxTask(Task):
         map_name="Equinox Valley",
         via_town=False,
         map_icon=os.path.join(NAV, "map_equinox.png"),
+        # The template is the mirror's stone CROWN, because the glass below it
+        # is an animation and would match itself badly from frame to frame.
         entry_icon=os.path.join(NAV, "entry_equinox.png"),
+        # ...but the crown is decoration.  The glass is what opens the screen,
+        # and it sits 41 px below the crown's middle: measured from
+        # _dev/equinox_valley.png, crown centre (314, 354), glass centre
+        # (312, 395).  Clicking the crown found the entrance and opened
+        # nothing, which read as "arrived, then the screen is not open".
+        entry_click_offset=(-2, 41),
     )
 
     def __init__(self, dream="Equinox Symbols", **kw):

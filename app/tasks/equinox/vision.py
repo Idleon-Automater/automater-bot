@@ -125,10 +125,10 @@ def bar_is_full(frame, cam):
     """
     Is the Equinox bar full, i.e. is there an upgrade to spend?
 
-    NOTE: verified against a FULL bar only.  The negative case -- that a
-    partly-filled bar reads as not full -- follows from the fill being drawn
-    left to right, but has not been seen in a capture.  If this ever returns
-    True on a filling bar, that assumption is where to look.
+    The bar fills LEFT TO RIGHT (confirmed in play), so its right-hand end is
+    the last part to colour in -- which makes the last stretch of track the one
+    place that distinguishes "nearly full" from "ready".  Sampling anywhere
+    left of that would call a 20% bar full.
     """
     y0, y1 = cam.to_screen(BAR_Y0), cam.to_screen(BAR_Y1)
     x0, x1 = cam.to_screen(BAR_TEST_X0), cam.to_screen(BAR_TEST_X1)
