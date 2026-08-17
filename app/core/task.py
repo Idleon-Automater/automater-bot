@@ -59,6 +59,11 @@ class Param:
     # saved today still means the same thing if the options are ever
     # reordered -- an index would silently start pointing at its neighbour.
     choices: list = field(default_factory=list)
+    # Past this value the setting is allowed but flagged.  Used for scores that
+    # exceed what the game's leaderboards plausibly contain: the program should
+    # not quietly stop someone doing it, and should not quietly let them either.
+    advise_above: Any = None
+    advice: str = ""
     minimum: Optional[float] = None
     maximum: Optional[float] = None
     allow_unlimited: bool = False          # None means "no limit"

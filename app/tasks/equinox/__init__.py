@@ -71,12 +71,21 @@ class EquinoxTask(Task):
         return hoops.Camera(mss.mss(), rect), rect
 
     def can_run(self):
+        # Proving the dream screen is OPEN, not merely that a window exists.
+        # The first version checked only the latter, so ensure_at concluded
+        # "already at W3 Equinox" and skipped travelling entirely -- then read
+        # the bar off whatever screen was showing and reported "not full".
+        # A false negative that reads like a clean result is worse than a
+        # failure, because nothing about it looks wrong.
         if not os.path.exists(self.location.entry_icon):
             raise Blocked("the Equinox mirror has not been captured yet")
         try:
-            self._camera()
+            cam, _rect = self._camera()
         except RuntimeError as e:
             raise Blocked(str(e))
+        frame, _ = cam.grab()
+        if not V.on_equinox_screen(frame, cam):
+            raise Blocked("the Equinox dream screen is not open")
 
     def run(self, stop=None):
         cam, rect = self._camera()

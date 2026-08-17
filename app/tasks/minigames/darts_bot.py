@@ -214,9 +214,16 @@ def press_exit(cam, clicker, dry=False):
 
 def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
          streak=0, adapt_latency=False, burn_on_stall=False, max_burns=6,
-         should_stop=None):
+         should_stop=None, stop_on_trophy=False, max_score=None):
     """
-    Run darts until the streak is won, the darts run out, or max_throws.
+    Run darts until the darts run out, the score limit is hit, or max_throws.
+
+    `stop_on_trophy` ends the game the moment nine in a row lands.  It defaults
+    OFF now: stopping there left the minigame on screen with lives unspent, and
+    an open minigame covers the MAP button -- so the next task in the list
+    could not travel and was skipped.  Playing on to game over spends the
+    remaining darts, and the game-over path presses EXIT, which is what clears
+    the screen for whatever runs next.
 
     Returns (throws, bullseyes, best_streak, reason), where reason is one of
     "won", "gameover", "stalled", "screen_gone", "stopped" -- endless mode
@@ -243,6 +250,7 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
     # noisy screen cannot spin here forever, and reset after every throw so the
     # allowance is per-throw rather than per-run.
     refits = 0
+    won_already = False        # nine in a row already banked in this game
     # Consecutive looks at an unreadable wind readout.  After a couple, the
     # dart is thrown at a guessed wind rather than surrendered unaimed.
     wind_blind = 0
@@ -871,10 +879,19 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
                     print(f"        -> dart latency now {latency * 1000:.0f}ms "
                           f"(median of {len(lat_hist)}, half-step)")
 
-        if streak >= 9:
+        if streak >= 9 and not won_already:
             print(f"\n[Darts] NINE IN A ROW - trophy earned after {throws} "
                   f"throws.")
-            reason = "won"
+            won_already = True
+            if stop_on_trophy:
+                reason = "won"
+                break
+            print("[Darts] playing on to use the remaining darts.")
+
+        if max_score is not None and bulls >= max_score:
+            print(f"\n[Darts] reached {bulls} bullseyes (limit {max_score}) "
+                  f"- stopping.")
+            reason = "gameover" if won_already else "limit"
             break
 
         print()
@@ -947,7 +964,7 @@ def enter_game(cam, clicker, entry=None, dry=False, poll=5.0, timeout=3600.0):
 
 def play_endless(cam, cfg, clicker, dry=False, entry=None, settle=1.6,
                  poll=5.0, max_runs=None, already_playing=True,
-                 should_stop=None):
+                 should_stop=None, max_score=None):
     """
     Play run after run: play -> EXIT -> wait out the cooldown -> click back in.
 
@@ -983,13 +1000,20 @@ def play_endless(cam, cfg, clicker, dry=False, entry=None, settle=1.6,
         print(f"\n{'=' * 62}\n[Endless] run {runs}\n{'=' * 62}")
         throws, bulls, best, reason = play(cam, cfg, clicker, dry=dry,
                                            settle=settle, burn_on_stall=True,
-                                           should_stop=should_stop)
+                                           should_stop=should_stop,
+                                           max_score=max_score)
         totals[0] += throws
         totals[1] += bulls
         totals[2] = max(totals[2], best)
 
         if reason == "won":
-            print("[Endless] trophy earned - stopping, that was the goal.")
+            # Only reachable when a caller asked to stop on the trophy.  EXIT
+            # first: leaving the minigame on screen covers the MAP button, and
+            # that took down every later task in the list -- one run earned the
+            # trophy and then failed Sushi three times over on "the map screen
+            # did not open".
+            print("[Endless] trophy earned - exiting.")
+            press_exit(cam, clicker, dry)
             break
 
         # Learn where to click back in while the minigame is still on screen

@@ -18,6 +18,8 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox,
                                QFormLayout, QLabel, QSpinBox, QVBoxLayout,
                                QWidget)
 
+from ui import theme
+
 
 class ParamEditor(QWidget):
     """Editors for one task's settings.  Emits `changed` on every edit."""
@@ -105,9 +107,32 @@ class ParamEditor(QWidget):
             spin.setMaximum(int(p.maximum if p.maximum is not None else 10 ** 6))
             spin.setValue(int(value) if value is not None
                           else int(p.default or spin.minimum()))
+            # Type into it as well as step it.  The arrows alone made large
+            # numbers unreachable -- 500 is 500 clicks -- and a spinner whose
+            # only affordance is a 1-step arrow reads as broken long before it
+            # gets there.
+            spin.setKeyboardTracking(False)
+            spin.setAccelerated(True)
+            step = max(1, int((p.maximum or 100) / 50))
+            spin.setSingleStep(step)
             spin.valueChanged.connect(self._emit)
             if p.help:
                 spin.setToolTip(p.help)
+
+            warn = None
+            if p.advise_above is not None:
+                # Allowed, but said out loud.  Refusing outright would be this
+                # program deciding for someone what risk they may take with
+                # their own account; saying nothing would be letting them take
+                # it without knowing.
+                warn = QLabel(p.advice)
+                warn.setWordWrap(True)
+                warn.setStyleSheet(f"color: {theme.RUN_STOP_BG}; "
+                                   f"font-size: {theme.FS_SMALL}px;")
+                warn.setVisible(int(spin.value()) > int(p.advise_above))
+                spin.valueChanged.connect(
+                    lambda v, w=warn, lim=p.advise_above:
+                    w.setVisible(int(v) > int(lim)))
 
             box = None
             if p.allow_unlimited:
@@ -126,6 +151,8 @@ class ParamEditor(QWidget):
             lay.addWidget(spin)
             if box:
                 lay.addWidget(box)
+            if warn is not None:
+                lay.addWidget(warn)
             row.setLayout(lay)
             self._rows[p.name] = (p, spin, box)
             self.form.addRow(p.label, row)

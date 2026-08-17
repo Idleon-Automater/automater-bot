@@ -99,6 +99,14 @@ class DartsTask(_MinigameTask):
     # so "how many" is the only thing worth choosing, and the waiting is the
     # bot's problem rather than the user's.
     params = [
+        Param("max_score", "Stop at bullseyes", "int", default=500,
+              minimum=1, maximum=5000,
+              advise_above=500,
+              advice=("Above the leaderboard range. A score this high may "
+                      "flag the account as automated -- I would advise "
+                      "against it."),
+              help="The nine-streak trophy is earned along the way; the game "
+                   "then plays on until the darts run out"),
         Param("games", "Games to play", "int", default=1,
               minimum=1, maximum=50, allow_unlimited=True,
               governs_endless=True,
@@ -127,9 +135,10 @@ class DartsTask(_MinigameTask):
         cooldown_check=prompt.cooldown_at,
     )
 
-    def __init__(self, games=1, **kw):
+    def __init__(self, games=1, max_score=500, **kw):
         super().__init__(**kw)
         self.games = games             # None = until stopped
+        self.max_score = max_score
         self.max_throws = None         # the engine takes one; unused
 
     def can_run(self):
@@ -157,7 +166,8 @@ class DartsTask(_MinigameTask):
         # Using it for every count keeps one code path instead of two.
         engine = EngineRun(lambda: darts_bot.play_endless(
             cam, cfg, clicker, max_runs=self.games,
-            already_playing=on_screen, should_stop=stopping))
+            already_playing=on_screen, should_stop=stopping,
+            max_score=self.max_score))
 
         for line in engine.lines():
             yield Progress(line)
@@ -191,8 +201,12 @@ class HoopsTask(_MinigameTask):
     # already the gate, and a second cap only gave two ways to say one thing.
     params = [
         Param("max_score", "Stop at score", "int", default=55,
-              minimum=1, maximum=55,
-              help="55 is the highest score worth attempting"),
+              minimum=1, maximum=500,
+              advise_above=55,
+              advice=("Above the leaderboard range. A score this high may "
+                      "flag the account as automated -- I would advise "
+                      "against it."),
+              help="Past 55 the hoop moves faster than a shot can be planned"),
         Param("games", "Games to play", "int", default=1,
               minimum=1, maximum=50, allow_unlimited=True,
               governs_endless=True,

@@ -70,6 +70,44 @@ BAR_TOLERANCE = 40
 BAR_TEST_X0, BAR_TEST_X1 = 700, 750
 
 
+def on_equinox_screen(frame, cam):
+    """
+    Is the dream screen actually open?
+
+    Checks that the grid's tiles are where the lattice says they are.  Without
+    this, `bar_is_full` was being asked about whatever happened to be on screen
+    -- and since no other screen has the bar's pale blue at that spot, it
+    always answered "not full".  The task then reported "bar not full yet,
+    nothing to upgrade" without ever having travelled, which is worse than an
+    error: it looks like a clean result.
+    """
+    hits = 0
+    for i in range(len(DREAMS)):
+        r, c = divmod(i, GRID_COLS)
+        cx = cam.to_screen(GRID_X0 + GRID_DX * c)
+        cy = cam.to_screen(GRID_Y0 + GRID_DY * r)
+        patch = frame[cy - 12:cy + 12, cx - 12:cx + 12]
+        if patch.size and patch.reshape(-1, 3).mean() > 120:
+            hits += 1
+    # Ten of thirteen, not all thirteen: a tile whose art happens to be dark in
+    # the middle should not fail the test, and neither should the mouse sitting
+    # over one.
+    if hits < 10:
+        return False
+
+    # Tiles alone are not enough -- the World 3 MAP passed that test, because
+    # snowfield sits at those coordinates and is just as bright.  So also
+    # require the bar's LEFT END, which is pale blue at any fill level from 1%
+    # to full, and is not a colour the map has anywhere near there.
+    y0, y1 = cam.to_screen(BAR_Y0), cam.to_screen(BAR_Y1)
+    x0, x1 = cam.to_screen(BAR_X0 + 14), cam.to_screen(BAR_X0 + 60)
+    lead = frame[y0:y1, x0:x1]
+    if lead.size == 0:
+        return False
+    mean = lead.reshape(-1, 3).mean(axis=0)
+    return bool(np.all(np.abs(mean - np.array(BAR_FULL_BGR)) <= BAR_TOLERANCE))
+
+
 def bar_is_full(frame, cam):
     """
     Is the Equinox bar full, i.e. is there an upgrade to spend?
