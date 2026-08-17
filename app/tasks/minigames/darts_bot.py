@@ -386,6 +386,17 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
         # EXIT on a false positive throws the run away.  A real game over lasts
         # until it is dismissed, so waiting one frame costs nothing.
         if V.game_over(frame0, cam) and V.game_over(cam.grab()[0], cam):
+            if throws == 0:
+                # Game over before a single dart was thrown: this is the
+                # LEFTOVER screen from a previous game, not a game we played.
+                # Counting it as one produced "1 game(s), 0 throws" in the
+                # report and, worse, consumed the run budget -- so a two-game
+                # request could spend both on screens that were already dead.
+                print("\n[Darts] the screen is already showing game over - "
+                      "this is the last game's result, not a new game.")
+                press_exit(cam, clicker, dry)
+                reason = "not_started"
+                break
             print(f"\n[Darts] GAME OVER - no lives left.")
             if dry:
                 print("[Darts] dry run: not pressing EXIT.")
@@ -1005,6 +1016,17 @@ def play_endless(cam, cfg, clicker, dry=False, entry=None, settle=1.6,
         totals[0] += throws
         totals[1] += bulls
         totals[2] = max(totals[2], best)
+
+        if reason == "not_started":
+            # We arrived on a dead screen from a previous game.  It has been
+            # exited, so the cooldown is running -- but nothing was played, so
+            # this must not count against the run budget.  Give the slot back
+            # and let the loop re-enter properly.
+            runs -= 1
+            print("[Endless] that was a leftover result screen, not a game - "
+                  "not counting it.")
+            if max_runs is not None and runs >= max_runs:
+                break
 
         if reason == "won":
             # Only reachable when a caller asked to stop on the trophy.  EXIT

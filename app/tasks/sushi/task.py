@@ -89,8 +89,17 @@ class SushiTask(Task):
         popup_icon=os.path.join(_HERE, "nav", "popup_sushi.png"),
     )
 
-    def __init__(self, max_cycles=0, lock_window=False):
-        self.max_cycles = max_cycles        # 0 = until nothing is left
+    # How long to wait when the board has nothing left to do, before looking
+    # again.  Only reached in run-forever mode.  Fuel regenerates continuously,
+    # so a few minutes is enough to have something to spend again.
+    IDLE_WAIT_S = 300.0
+
+    def __init__(self, max_minutes=30, lock_window=False):
+        # This used to be `max_cycles`, which no parameter ever set -- so
+        # `max_minutes` was stored as a stray attribute and the run loop, which
+        # only looked at `max_cycles`, never had a time budget at all.  "Run for
+        # 30 minutes" did nothing; runs ended when the board went quiet.
+        self.max_minutes = max_minutes      # None = until stopped
         self.lock_window = lock_window
 
     def can_run(self):
@@ -116,8 +125,13 @@ class SushiTask(Task):
 
         best_tier = 0
         cycles = 0
+        idle = 0
+        started = time.monotonic()
+        budget = None if self.max_minutes is None else self.max_minutes * 60.0
+
         while not (stop and stop()):
-            if self.max_cycles and cycles >= self.max_cycles:
+            if budget is not None and time.monotonic() - started >= budget:
+                yield Progress(f"{self.max_minutes:.0f} minutes up - stopping")
                 break
             cycles += 1
 
@@ -144,8 +158,30 @@ class SushiTask(Task):
                 detail={"cycle": cycles, "occupied": after, "top_tier": top})
 
             if after == n_before and cycles > 1:
-                yield Progress("nothing changed - finished")
-                break
+                # A cycle that changed nothing means there is nothing to merge
+                # and no fuel to make more with.  Whether that is "finished"
+                # depends on what was asked for.
+                if not self.runs_forever:
+                    yield Progress("nothing changed - finished")
+                    break
+                # Run-forever was chosen, so this is a lull, not an ending:
+                # fuel regenerates, and after a wait there will be sushi to
+                # make again.  Stopping here made the setting a lie -- an
+                # unlimited run ended after two cycles and eight minutes.
+                idle += 1
+                yield Progress(f"nothing to do - waiting "
+                               f"{self.IDLE_WAIT_S / 60:.0f} min for fuel, "
+                               f"then trying again (idle round {idle})")
+                waited = 0.0
+                # Slept in short steps so F6 still stops within a couple of
+                # seconds rather than after five minutes.
+                while waited < self.IDLE_WAIT_S and not (stop and stop()):
+                    if budget is not None and \
+                            time.monotonic() - started >= budget:
+                        break
+                    time.sleep(2.0)
+                    waited += 2.0
+                cycles -= 1        # a lull is not a cycle of work
 
         self._best_tier = best_tier
         self._cycles = cycles
