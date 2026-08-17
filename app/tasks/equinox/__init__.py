@@ -83,9 +83,15 @@ class EquinoxTask(Task):
             cam, _rect = self._camera()
         except RuntimeError as e:
             raise Blocked(str(e))
-        frame, _ = cam.grab()
-        if not V.on_equinox_screen(frame, cam):
-            raise Blocked("the Equinox dream screen is not open")
+        # Looked at a few times over a second and a half.  ensure_at asks this
+        # immediately after clicking the mirror, and the screen animates in --
+        # a single look decides against a screen that is on its way up.
+        for attempt in range(6):
+            frame, _ = cam.grab()
+            if V.on_equinox_screen(frame, cam):
+                return
+            time.sleep(0.25)
+        raise Blocked("the Equinox dream screen is not open")
 
     def run(self, stop=None):
         cam, rect = self._camera()

@@ -69,6 +69,13 @@ BAR_TOLERANCE = 40
 # distinguishes "nearly there" from "ready".
 BAR_TEST_X0, BAR_TEST_X1 = 700, 750
 
+# ── The info panel and its UPGRADE button ─────────────────────────────────────
+# The dark box down the right-hand side.  It is the screen's most dependable
+# landmark: present whatever the bar is doing and whether or not a dream is
+# selected.
+PANEL_X0, PANEL_X1 = 752, 940
+PANEL_Y0, PANEL_Y1 = 190, 470
+
 
 def on_equinox_screen(frame, cam):
     """
@@ -95,17 +102,23 @@ def on_equinox_screen(frame, cam):
     if hits < 10:
         return False
 
-    # Tiles alone are not enough -- the World 3 MAP passed that test, because
+    # Tiles alone are not enough -- the World 3 MAP passes that test, because
     # snowfield sits at those coordinates and is just as bright.  So also
-    # require the bar's LEFT END, which is pale blue at any fill level from 1%
-    # to full, and is not a colour the map has anywhere near there.
-    y0, y1 = cam.to_screen(BAR_Y0), cam.to_screen(BAR_Y1)
-    x0, x1 = cam.to_screen(BAR_X0 + 14), cam.to_screen(BAR_X0 + 60)
-    lead = frame[y0:y1, x0:x1]
-    if lead.size == 0:
+    # require the dark info panel down the right-hand side.
+    #
+    # An earlier version tested the fill bar's LEFT END instead, on the
+    # reasoning that it is filled at any level.  That was wrong and it cost a
+    # run: at 8,230 of 730,265 the fill is 1%, about 7 px of a 692 px track, so
+    # the "always filled" left end was empty and the screen read as closed.
+    # The panel is there whatever the bar is doing.
+    y0, y1 = cam.to_screen(PANEL_Y0 + 10), cam.to_screen(PANEL_Y1 - 10)
+    x0, x1 = cam.to_screen(PANEL_X0 + 8), cam.to_screen(PANEL_X1 - 5)
+    panel = frame[y0:y1, x0:x1]
+    if panel.size == 0:
         return False
-    mean = lead.reshape(-1, 3).mean(axis=0)
-    return bool(np.all(np.abs(mean - np.array(BAR_FULL_BGR)) <= BAR_TOLERANCE))
+    # Measured: 29 on the dream screen, 60 on the darts map, 145 on the world
+    # map and 144 standing in the valley.
+    return float(panel.reshape(-1, 3).mean()) < 45.0
 
 
 def bar_is_full(frame, cam):
@@ -128,8 +141,6 @@ def bar_is_full(frame, cam):
 
 # ── The info panel and its UPGRADE button ─────────────────────────────────────
 # The brown box down the right-hand side.
-PANEL_X0, PANEL_X1 = 752, 940
-PANEL_Y0, PANEL_Y1 = 190, 470
 
 
 def find_upgrade_button(frame, cam):

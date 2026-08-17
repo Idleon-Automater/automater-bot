@@ -888,9 +888,9 @@ def play(cam, cfg, clicker, dry=False, max_throws=None, settle=1.6,
                 break
             print("[Darts] playing on to use the remaining darts.")
 
-        if max_score is not None and bulls >= max_score:
-            print(f"\n[Darts] reached {bulls} bullseyes (limit {max_score}) "
-                  f"- stopping.")
+        if max_score is not None and bullseyes >= max_score:
+            print(f"\n[Darts] reached {bullseyes} bullseyes "
+                  f"(limit {max_score}) - stopping.")
             reason = "gameover" if won_already else "limit"
             break
 
