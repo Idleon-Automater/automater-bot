@@ -25,6 +25,7 @@ import sys
 import time
 
 from core.navigate import Location
+from core.streaming import EngineRun
 from core.task import Blocked, Param, Progress, Result, Task
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -143,10 +144,28 @@ class SushiTask(Task):
             top = max((v for v in board if v >= 0), default=-1) + 1
             best_tier = max(best_tier, top)
 
-            # One round of the engine's own loop.
+            # One round of the engine's own loop, with its output routed into
+            # the run log.
+            #
+            # This used to be a bare call, so everything the engine printed
+            # went nowhere.  That hid the one line that explains a board which
+            # does not change:
+            #
+            #   [Cycle] first drag (65 -> 68) changed NOTHING on the board.
+            #           Drags are not registering - stopping rather than
+            #           issuing 49 more.
+            #
+            # which is what the oven mitt does: with it ON, drags are accepted
+            # and ignored.  From outside, that is indistinguishable from a
+            # board with nothing left to merge -- and it got reported as
+            # "nothing to do" against a board full of mergeable tiles.
             n_before = occupied
-            sushi_bot.cycle(rect, clicker, rounds=1,
-                            should_stop=lambda: bool(stop and stop()))
+            engine = EngineRun(lambda: sushi_bot.cycle(
+                rect, clicker, rounds=1,
+                should_stop=lambda: bool(stop and stop())))
+            for line in engine.lines():
+                yield Progress(line)
+            engine.raise_if_failed()
 
             board, _ = sushi_bot.board_and_mask()
             after = sum(1 for v in board if v >= 0) if board else n_before
