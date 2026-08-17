@@ -7,17 +7,25 @@ Everything derives from one constant, so there is only ever one version number t
 
 ## Who does what
 
-Say "release 1.0.3" and Claude runs everything below except step 5, then stops and asks for
-the upload. The split is not about permission, it is about what a session can reach:
+Say "release 1.0.3" and Claude runs steps 1-4, then **stops** and hands over the two files.
+The split is not about permission, it is about what a session can reach:
 
-| | Steps | Why |
+| | Steps | |
 |---|---|---|
-| **Claude** | 1, 2, 3, 4, 6, 7 | Local commands, plus the push and the Pages deploy |
-| **You** | 5 — the R2 upload | Needs Cloudflare credentials that never live in a session |
+| **Claude** | 1 2 3 4 | version, build, notes, landing page |
+| **You** | **5** | the R2 upload — needs Cloudflare credentials that never live in a session |
+| **Claude** | 6 7 8 | deploy the page, verify the release, push |
 
-Two things Claude should ask about rather than decide: the **release notes** (what users are
-told changed is your call, not a summary of the diff), and anything that would **overwrite an
-existing `releases/<version>/`**.
+**The handover is a hard stop.** Step 7 checks the *live* bucket, so it cannot run before the
+upload exists — running it early fails on a URL that is not there yet. Claude should pause
+after step 4 and say which two files to upload where, not carry on and report a failure it
+caused by going too early.
+
+Claude asks rather than decides on:
+
+- **the release notes** — what users are told changed is your call, not a summary of a diff
+- **anything that would overwrite an existing `releases/<version>/`** — that invalidates a
+  hash somebody may already have checked
 
 ---
 
@@ -37,6 +45,10 @@ python tools/build_exe.py
 ```
 
 Two minutes. Prints the size and SHA-256 at the end, and writes `dist/version.json` to match.
+
+**Close any running copy of the exe first.** Windows will not let PyInstaller overwrite a file
+that is executing, and the build fails part-way through with a permissions error that reads
+like something worse.
 
 *Once you have a real certificate:* build in CI instead — **Actions → build → Run workflow →
 tick "sign", type the release notes → Run** — then download the `IdleonAutomator` artifact and
@@ -58,6 +70,13 @@ In `dist/version.json`, fill in `"notes"` — one sentence, shown to users in th
 - the SHA-256
 
 The link and the hash must match `dist/version.json` exactly.
+
+**If the release adds or removes a task, the page describes it in three more places** — all
+easy to miss, because the release block is the part you go looking for:
+
+- the **run-list mock-up** in the hero (`<ul class="run">`), with the world's colour dot
+- a **task card** in *What it can run*
+- the **count sentence** — "Five tasks today"
 
 ## 5. Upload to R2  — *yours*
 
@@ -93,7 +112,23 @@ python tools/check_release.py --deep
 Green means the live manifest, the live exe and the published hash all agree. Red means don't
 announce it yet. Takes a minute — it downloads the exe to verify the hash for real.
 
-Then click the download button on the site once, to be sure.
+Also confirm the live page really updated, with a request that cannot be served from cache:
+
+```powershell
+$r = Invoke-WebRequest "https://idleonautomater.pages.dev/?cachebust=$(Get-Random)" -UseBasicParsing
+[regex]::Match($r.Content, 'Version (\d+\.\d+\.\d+)').Value
+```
+
+## 8. Push
+
+```
+cd "C:\Claude Programs\Idleon programs\Automator"
+git push
+```
+
+Last, not first: the repo should end up describing the build that actually shipped. The
+version bump, the page edits and the notes are all commits, so a release that is not pushed
+leaves the public repo claiming the previous version.
 
 ---
 
