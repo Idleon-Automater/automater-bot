@@ -34,9 +34,11 @@ def task_factories():
     from tasks.sushi import SushiTask
     from tasks.minigames import DartsTask, HoopsTask
     from tasks.refinery import RefineryTask
+    from tasks.equinox import EquinoxTask
 
     out = {cls.name: cls
-           for cls in (SushiTask, DartsTask, HoopsTask, RefineryTask)}
+           for cls in (SushiTask, DartsTask, HoopsTask, RefineryTask,
+                       EquinoxTask)}
     # TEMPORARY: one pretend task, so a run can be exercised without the game.
     # Delete tasks/demo/ and these three lines together.
     try:
