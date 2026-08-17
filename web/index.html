@@ -1,12 +1,15 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Idleon Automator</title>
-<meta name="description" content="A free, portable Windows program that plays the tedious parts of Legends of Idleon for you. Build a list of tasks, press Run.">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Idleon Automator</title>
+        <meta
+            name="description"
+            content="A free, portable Windows program that plays the tedious parts of Legends of Idleon for you. Build a list of tasks, press Run."
+        />
 
-<!-- ===================================================================
+        <!-- ===================================================================
      RELEASING A NEW VERSION?  Full checklist in RELEASING.md at the
      project root.  Everything this file needs is in ONE place -- search
      for "release block" below -- and it is four values:
@@ -15,516 +18,726 @@
      and must match dist/version.json exactly.
      =================================================================== -->
 
-<style>
-/* -------------------------------------------------------------------
+        <style>
+            /* -------------------------------------------------------------------
    Tokens.  The light palette is the program's own, from app/ui/theme.py
    -- the same cream, dusty rose and slate the window is painted in, so
    the site and the thing it hands you are recognisably one product.
    The dark set keeps that violet-leaning neutral family rather than
    inverting to grey, which would read as a different program.
    ------------------------------------------------------------------- */
-:root {
-  --ground:   #f2e9e4;
-  --panel:    #faf6f4;
-  --rule:     #c9ada7;
-  --rule-soft:#ded0cb;
-  --ink:      #22223b;
-  --body:     #4a4e69;
-  --muted:    #7d7f96;
+            :root {
+                --ground: #f2e9e4;
+                --panel: #faf6f4;
+                --rule: #c9ada7;
+                --rule-soft: #ded0cb;
+                --ink: #22223b;
+                --body: #4a4e69;
+                --muted: #7d7f96;
 
-  --on-ink:   #f2e9e4;
-  --shadow:   rgba(34, 34, 59, .10);
+                --on-ink: #f2e9e4;
+                --shadow: rgba(34, 34, 59, 0.1);
 
-  /* World colours, straight from app/core/worlds.py.  These are data --
+                /* World colours, straight from app/core/worlds.py.  These are data --
      they say which part of the game a task lives in -- so they are not
      the page's accent and are never used decoratively. */
-  --w1: #3f8f4f;
-  --w3: #2f6fb5;
-  --w7: #3f9fc0;
+                --w1: #3f8f4f;
+                --w3: #2f6fb5;
+                --w7: #3f9fc0;
 
-  --caution:  #8a5f5a;   /* theme.RUN_STOP_BG: warm, not alarm-red */
+                --caution: #8a5f5a; /* theme.RUN_STOP_BG: warm, not alarm-red */
 
-  --measure: 65ch;
-  --radius: 4px;         /* theme.RADIUS */
-  --spine: 13px;         /* where the metro line sits */
-}
+                --measure: 65ch;
+                --radius: 4px; /* theme.RADIUS */
+                --spine: 13px; /* where the metro line sits */
+            }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ground:   #1a1826;
-    --panel:    #211f2e;
-    --rule:     #4a4058;
-    --rule-soft:#332e44;
-    --ink:      #f4efe9;
-    --body:     #c9c2d8;
-    --muted:    #8a83a0;
+            @media (prefers-color-scheme: dark) {
+                :root {
+                    --ground: #1a1826;
+                    --panel: #211f2e;
+                    --rule: #4a4058;
+                    --rule-soft: #332e44;
+                    --ink: #f4efe9;
+                    --body: #c9c2d8;
+                    --muted: #8a83a0;
 
-    --on-ink:   #1a1826;
-    --shadow:   rgba(0, 0, 0, .35);
+                    --on-ink: #1a1826;
+                    --shadow: rgba(0, 0, 0, 0.35);
 
-    /* Lifted so they still read as themselves on a dark ground. */
-    --w1: #5fb872;
-    --w3: #5b9fe0;
-    --w7: #63c4e2;
+                    /* Lifted so they still read as themselves on a dark ground. */
+                    --w1: #5fb872;
+                    --w3: #5b9fe0;
+                    --w7: #63c4e2;
 
-    --caution:  #c89189;
-  }
-}
+                    --caution: #c89189;
+                }
+            }
 
-* { box-sizing: border-box; }
+            * {
+                box-sizing: border-box;
+            }
 
-html { -webkit-text-size-adjust: 100%; }
+            html {
+                -webkit-text-size-adjust: 100%;
+            }
 
-body {
-  margin: 0;
-  /* No webfont by design: the page stays a single self-contained file you
+            body {
+                margin: 0;
+                /* No webfont by design: the page stays a single self-contained file you
      can drag onto Pages, and a program whose pitch is that nothing leaves
      your machine should not phone a font CDN on its own download page. */
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  font-size: 17px;
-  line-height: 1.65;
-  background: var(--ground);
-  color: var(--body);
-  -webkit-font-smoothing: antialiased;
-}
+                font-family:
+                    system-ui,
+                    -apple-system,
+                    "Segoe UI",
+                    Roboto,
+                    sans-serif;
+                font-size: 17px;
+                line-height: 1.65;
+                background: var(--ground);
+                color: var(--body);
+                -webkit-font-smoothing: antialiased;
+            }
 
-.mono {
-  font-family: ui-monospace, "Cascadia Code", "Cascadia Mono", Consolas,
-               "SF Mono", Menlo, monospace;
-  font-variant-numeric: tabular-nums;
-}
+            .mono {
+                font-family:
+                    ui-monospace, "Cascadia Code", "Cascadia Mono", Consolas,
+                    "SF Mono", Menlo, monospace;
+                font-variant-numeric: tabular-nums;
+            }
 
-a { color: inherit; }
+            a {
+                color: inherit;
+            }
 
-:focus-visible {
-  outline: 2px solid var(--w3);
-  outline-offset: 3px;
-  border-radius: 2px;
-}
+            :focus-visible {
+                outline: 2px solid var(--w3);
+                outline-offset: 3px;
+                border-radius: 2px;
+            }
 
-/* -------------------------------------------------------------------
+            /* -------------------------------------------------------------------
    The spine.  The program draws a run list as stations on a vertical
    line; the page is laid out on that same line, and each section is a
    stop.  It is the product's own interface used as the page's
    structure, not a timeline motif borrowed from somewhere else.
    ------------------------------------------------------------------- */
-.wrap {
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 0 24px 96px calc(24px + var(--spine) + 20px);
-  position: relative;
-}
+            .wrap {
+                max-width: 760px;
+                margin: 0 auto;
+                padding: 0 24px 96px calc(24px + var(--spine) + 20px);
+                position: relative;
+            }
 
-.wrap::before {
-  content: "";
-  position: absolute;
-  left: calc(24px + var(--spine));
-  top: 72px;
-  bottom: 180px;
-  width: 2px;
-  background: var(--rule-soft);
-}
+            .wrap::before {
+                content: "";
+                position: absolute;
+                left: calc(24px + var(--spine));
+                top: 72px;
+                bottom: 180px;
+                width: 2px;
+                background: var(--rule-soft);
+            }
 
-section { position: relative; padding-top: 56px; }
+            section {
+                position: relative;
+                padding-top: 56px;
+            }
 
-section::before {          /* the station dot */
-  content: "";
-  position: absolute;
-  left: calc(-20px - var(--spine) + 5px);
-  top: 68px;
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: var(--ground);
-  border: 2px solid var(--rule);
-}
+            section::before {
+                /* the station dot */
+                content: "";
+                position: absolute;
+                left: calc(-20px - var(--spine) + 5px);
+                top: 68px;
+                width: 11px;
+                height: 11px;
+                border-radius: 50%;
+                background: var(--ground);
+                border: 2px solid var(--rule);
+            }
 
-.eyebrow {
-  font-size: 12px;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin: 0 0 14px;
-}
+            .eyebrow {
+                font-size: 12px;
+                letter-spacing: 0.14em;
+                text-transform: uppercase;
+                color: var(--muted);
+                margin: 0 0 14px;
+            }
 
-h1 {
-  font-size: clamp(2.6rem, 7vw, 3.9rem);
-  line-height: 1.02;
-  letter-spacing: -.035em;
-  font-weight: 800;
-  color: var(--ink);
-  margin: 0 0 20px;
-  text-wrap: balance;
-}
+            h1 {
+                font-size: clamp(2.6rem, 7vw, 3.9rem);
+                line-height: 1.02;
+                letter-spacing: -0.035em;
+                font-weight: 800;
+                color: var(--ink);
+                margin: 0 0 20px;
+                text-wrap: balance;
+            }
 
-h2 {
-  font-size: 1.45rem;
-  letter-spacing: -.015em;
-  font-weight: 700;
-  color: var(--ink);
-  margin: 0 0 6px;
-  text-wrap: balance;
-}
+            h2 {
+                font-size: 1.45rem;
+                letter-spacing: -0.015em;
+                font-weight: 700;
+                color: var(--ink);
+                margin: 0 0 6px;
+                text-wrap: balance;
+            }
 
-h3 {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--ink);
-  margin: 0 0 4px;
-}
+            h3 {
+                font-size: 1rem;
+                font-weight: 700;
+                color: var(--ink);
+                margin: 0 0 4px;
+            }
 
-p { margin: 0 0 16px; max-width: var(--measure); }
-.lede { font-size: 1.2rem; color: var(--body); }
-.sub  { color: var(--muted); margin-bottom: 28px; }
+            p {
+                margin: 0 0 16px;
+                max-width: var(--measure);
+            }
+            .lede {
+                font-size: 1.2rem;
+                color: var(--body);
+            }
+            .sub {
+                color: var(--muted);
+                margin-bottom: 28px;
+            }
 
-/* ---- hero: header is the first station -------------------------- */
-header { position: relative; padding-top: 76px; }
+            /* ---- hero: header is the first station -------------------------- */
+            header {
+                position: relative;
+                padding-top: 76px;
+            }
 
-header::before {
-  content: "";
-  position: absolute;
-  left: calc(-20px - var(--spine) + 3px);
-  top: 84px;
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  background: var(--ink);
-  border: 2px solid var(--ink);
-}
+            header::before {
+                content: "";
+                position: absolute;
+                left: calc(-20px - var(--spine) + 3px);
+                top: 84px;
+                width: 15px;
+                height: 15px;
+                border-radius: 50%;
+                background: var(--ink);
+                border: 2px solid var(--ink);
+            }
 
-/* ---- download ---------------------------------------------------- */
-.get { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin: 32px 0 12px; }
+            /* ---- download ---------------------------------------------------- */
+            .get {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 16px;
+                margin: 32px 0 12px;
+            }
 
-.btn {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 10px;
-  background: var(--ink);
-  color: var(--on-ink);
-  text-decoration: none;
-  font-weight: 700;
-  font-size: 1.05rem;
-  padding: 14px 26px;
-  border: 2px solid var(--ink);
-  border-radius: var(--radius);
-  transition: transform .12s ease, box-shadow .12s ease;
-}
-.btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px var(--shadow); }
-.btn:active { transform: translateY(0); }
-.btn .size { font-size: .85rem; font-weight: 400; opacity: .72; }
+            .btn {
+                display: inline-flex;
+                align-items: baseline;
+                gap: 10px;
+                background: var(--ink);
+                color: var(--on-ink);
+                text-decoration: none;
+                font-weight: 700;
+                font-size: 1.05rem;
+                padding: 14px 26px;
+                border: 2px solid var(--ink);
+                border-radius: var(--radius);
+                transition:
+                    transform 0.12s ease,
+                    box-shadow 0.12s ease;
+            }
+            .btn:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 6px 18px var(--shadow);
+            }
+            .btn:active {
+                transform: translateY(0);
+            }
+            .btn .size {
+                font-size: 0.85rem;
+                font-weight: 400;
+                opacity: 0.72;
+            }
 
-.meta { font-size: 13px; color: var(--muted); }
-.meta strong { color: var(--body); font-weight: 600; }
+            .meta {
+                font-size: 13px;
+                color: var(--muted);
+            }
+            .meta strong {
+                color: var(--body);
+                font-weight: 600;
+            }
 
-.hash {
-  margin-top: 18px;
-  font-size: 12px;
-  color: var(--muted);
-  overflow-wrap: anywhere;
-  max-width: var(--measure);
-}
-.hash b { color: var(--body); font-weight: 600; }
+            .hash {
+                margin-top: 18px;
+                font-size: 12px;
+                color: var(--muted);
+                overflow-wrap: anywhere;
+                max-width: var(--measure);
+            }
+            .hash b {
+                color: var(--body);
+                font-weight: 600;
+            }
 
-/* ---- the run list, drawn as the program draws it ----------------- */
-.shot {
-  margin: 40px 0 8px;
-  background: var(--panel);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius);
-  padding: 20px 22px 22px;
-  box-shadow: 0 10px 30px var(--shadow);
-}
+            /* ---- the run list, drawn as the program draws it ----------------- */
+            .shot {
+                margin: 40px 0 8px;
+                background: var(--panel);
+                border: 1px solid var(--rule);
+                border-radius: var(--radius);
+                padding: 20px 22px 22px;
+                box-shadow: 0 10px 30px var(--shadow);
+            }
 
-.shot-title {
-  font-size: 12px;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-bottom: 16px;
-}
+            .shot-title {
+                font-size: 12px;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                color: var(--muted);
+                margin-bottom: 16px;
+            }
 
-.run { list-style: none; margin: 0; padding: 0 0 0 22px; position: relative; }
+            .run {
+                list-style: none;
+                margin: 0;
+                padding: 0 0 0 22px;
+                position: relative;
+            }
 
-.run::before {                    /* the list's own metro line */
-  content: "";
-  position: absolute;
-  left: 4px; top: 12px; bottom: 12px;
-  width: 2px;
-  background: var(--rule-soft);
-}
+            .run::before {
+                /* the list's own metro line */
+                content: "";
+                position: absolute;
+                left: 4px;
+                top: 12px;
+                bottom: 12px;
+                width: 2px;
+                background: var(--rule-soft);
+            }
 
-.run li {
-  position: relative;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding: 7px 12px;
-  margin-bottom: 6px;            /* theme.ROW_GAP */
-  border: 1px solid var(--rule-soft);
-  border-left: 3px solid var(--dot);
-  border-radius: var(--radius);
-  background: var(--ground);
-  font-size: .95rem;
-  color: var(--ink);
-}
+            .run li {
+                position: relative;
+                display: flex;
+                align-items: baseline;
+                gap: 10px;
+                padding: 7px 12px;
+                margin-bottom: 6px; /* theme.ROW_GAP */
+                border: 1px solid var(--rule-soft);
+                border-left: 3px solid var(--dot);
+                border-radius: var(--radius);
+                background: var(--ground);
+                font-size: 0.95rem;
+                color: var(--ink);
+            }
 
-.run li::before {
-  content: "";
-  position: absolute;
-  left: -22px;
-  top: 15px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--dot);
-}
+            .run li::before {
+                content: "";
+                position: absolute;
+                left: -22px;
+                top: 15px;
+                width: 9px;
+                height: 9px;
+                border-radius: 50%;
+                background: var(--dot);
+            }
 
-.run .where { margin-left: auto; font-size: 11px; color: var(--muted); }
+            .run .where {
+                margin-left: auto;
+                font-size: 11px;
+                color: var(--muted);
+            }
 
-/* ---- task cards -------------------------------------------------- */
-.tasks { display: grid; gap: 14px; margin-top: 26px; }
-@media (min-width: 620px) { .tasks { grid-template-columns: 1fr 1fr; } }
+            /* ---- task cards -------------------------------------------------- */
+            .tasks {
+                display: grid;
+                gap: 14px;
+                margin-top: 26px;
+            }
+            @media (min-width: 620px) {
+                .tasks {
+                    grid-template-columns: 1fr 1fr;
+                }
+            }
 
-.task {
-  background: var(--panel);
-  border: 1px solid var(--rule-soft);
-  border-top: 3px solid var(--dot);
-  border-radius: var(--radius);
-  padding: 16px 18px 18px;
-}
-.task p { font-size: .92rem; margin: 0; color: var(--body); }
+            .task {
+                background: var(--panel);
+                border: 1px solid var(--rule-soft);
+                border-top: 3px solid var(--dot);
+                border-radius: var(--radius);
+                padding: 16px 18px 18px;
+            }
+            .task p {
+                font-size: 0.92rem;
+                margin: 0;
+                color: var(--body);
+            }
 
-.chip {
-  display: inline-block;
-  font-size: 10px;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: var(--dot);
-  border: 1px solid var(--dot);
-  border-radius: 999px;
-  padding: 1px 8px;
-  margin-bottom: 8px;
-}
+            .chip {
+                display: inline-block;
+                font-size: 10px;
+                letter-spacing: 0.1em;
+                text-transform: uppercase;
+                color: var(--dot);
+                border: 1px solid var(--dot);
+                border-radius: 999px;
+                padding: 1px 8px;
+                margin-bottom: 8px;
+            }
 
-/* ---- the honest bit ---------------------------------------------- */
-.warn {
-  border-left: 3px solid var(--caution);
-  padding: 2px 0 2px 20px;
-  margin: 22px 0;
-}
-.warn h3 { color: var(--caution); }
-.warn p { margin-bottom: 10px; }
-.warn p:last-child { margin-bottom: 0; }
+            /* ---- the honest bit ---------------------------------------------- */
+            .warn {
+                border-left: 3px solid var(--caution);
+                padding: 2px 0 2px 20px;
+                margin: 22px 0;
+            }
+            .warn h3 {
+                color: var(--caution);
+            }
+            .warn p {
+                margin-bottom: 10px;
+            }
+            .warn p:last-child {
+                margin-bottom: 0;
+            }
 
-/* A command to copy: on its own line, and scrollable rather than wrapped --
+            /* A command to copy: on its own line, and scrollable rather than wrapped --
    a broken command line is one a reader has to reassemble by hand. */
-.cmd {
-  display: block;
-  font-size: .85rem;
-  background: var(--panel);
-  border: 1px solid var(--rule-soft);
-  border-radius: var(--radius);
-  padding: 9px 12px;
-  overflow-x: auto;
-  white-space: nowrap;
-}
+            .cmd {
+                display: block;
+                font-size: 0.85rem;
+                background: var(--panel);
+                border: 1px solid var(--rule-soft);
+                border-radius: var(--radius);
+                padding: 9px 12px;
+                overflow-x: auto;
+                white-space: nowrap;
+            }
 
-.key {
-  display: inline-block;
-  font-size: .85em;
-  font-weight: 700;
-  color: var(--ink);
-  background: var(--panel);
-  border: 1px solid var(--rule);
-  border-bottom-width: 2px;
-  border-radius: 3px;
-  padding: 1px 7px;
-}
+            .key {
+                display: inline-block;
+                font-size: 0.85em;
+                font-weight: 700;
+                color: var(--ink);
+                background: var(--panel);
+                border: 1px solid var(--rule);
+                border-bottom-width: 2px;
+                border-radius: 3px;
+                padding: 1px 7px;
+            }
 
-/* ---- links ------------------------------------------------------- */
-.links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+            /* ---- links ------------------------------------------------------- */
+            .links {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 12px;
+                margin-top: 24px;
+            }
 
-.link {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  text-decoration: none;
-  font-weight: 700;
-  font-size: .95rem;
-  padding: 11px 20px;
-  border: 2px solid var(--c);
-  color: var(--c);
-  border-radius: var(--radius);
-  transition: background .12s ease, color .12s ease;
-}
-.link:hover { background: var(--c); color: #fff; }
-.link svg { width: 19px; height: 19px; fill: currentColor; flex: none; }
+            .link {
+                display: inline-flex;
+                align-items: center;
+                gap: 9px;
+                text-decoration: none;
+                font-weight: 700;
+                font-size: 0.95rem;
+                padding: 11px 20px;
+                border: 2px solid var(--c);
+                color: var(--c);
+                border-radius: var(--radius);
+                transition:
+                    background 0.12s ease,
+                    color 0.12s ease;
+            }
+            .link:hover {
+                background: var(--c);
+                color: #fff;
+            }
+            .link svg {
+                width: 19px;
+                height: 19px;
+                fill: currentColor;
+                flex: none;
+            }
 
-footer {
-  margin-top: 72px;
-  padding-top: 28px;
-  border-top: 1px solid var(--rule-soft);
-  font-size: 13px;
-  color: var(--muted);
-}
-footer p { max-width: var(--measure); margin-bottom: 10px; }
+            footer {
+                margin-top: 72px;
+                padding-top: 28px;
+                border-top: 1px solid var(--rule-soft);
+                font-size: 13px;
+                color: var(--muted);
+            }
+            footer p {
+                max-width: var(--measure);
+                margin-bottom: 10px;
+            }
 
-@media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; }
-  .btn:hover { transform: none; }
-}
-</style>
-</head>
+            @media (prefers-reduced-motion: reduce) {
+                * {
+                    transition: none !important;
+                }
+                .btn:hover {
+                    transform: none;
+                }
+            }
+        </style>
+    </head>
 
-<body>
-<div class="wrap">
+    <body>
+        <div class="wrap">
+            <header>
+                <p class="eyebrow mono">
+                    Windows &middot; portable &middot; free
+                </p>
+                <h1>Idleon Automator</h1>
+                <p class="lede">
+                    Build a list of the jobs you do every day in Legends of
+                    Idleon, press Run, and go do something else.
+                </p>
+                <p class="sub">
+                    It reads the screen and moves your mouse the way you would
+                    &mdash; travelling between worlds, opening each screen, and
+                    doing the work.
+                </p>
 
-  <header>
-    <p class="eyebrow mono">Windows &middot; portable &middot; free</p>
-    <h1>Idleon Automator</h1>
-    <p class="lede">Build a list of the jobs you do every day in Legends of Idleon,
-       press Run, and go do something else.</p>
-    <p class="sub">It reads the screen and moves your mouse the way you would &mdash;
-       travelling between worlds, opening each screen, and doing the work.</p>
+                <!-- release block: version, size and hash are printed by build_exe.py -->
+                <div class="get">
+                    <a
+                        class="btn"
+                        href="https://pub-6ca3288dbdb14574a96b21dac0c7fac1.r2.dev/releases/1.0.2/IdleonAutomator.exe"
+                    >
+                        Download for Windows
+                        <span class="size mono">89&nbsp;MB</span>
+                    </a>
+                    <div class="meta">
+                        <strong class="mono">Version 1.0.2</strong><br />
+                        No installer. Run it where you put it.
+                    </div>
+                </div>
 
-    <!-- release block: version, size and hash are printed by build_exe.py -->
-    <div class="get">
-      <a class="btn" href="https://pub-6ca3288dbdb14574a96b21dac0c7fac1.r2.dev/releases/1.0.0/IdleonAutomator.exe">
-        Download for Windows
-        <span class="size mono">89&nbsp;MB</span>
-      </a>
-      <div class="meta">
-        <strong class="mono">Version 1.0.0</strong><br>
-        No installer. Run it where you put it.
-      </div>
-    </div>
+                <p class="hash mono">
+                    <b>SHA-256</b>
+                    5368ad8944737bd96f51c6c0914b4b1d37cacb83811442feefe87636562a3b51
+                </p>
 
-    <p class="hash mono"><b>SHA-256</b>
-       bc352501ac9e761bd6fb18f46b851c988a7eef4cada3773e52bbef5a33afb7a1</p>
+                <div class="shot">
+                    <div class="shot-title mono">
+                        A run list, as the program draws it
+                    </div>
+                    <ul class="run">
+                        <li style="--dot: var(--w3)">
+                            Refinery <span class="where mono">World 3</span>
+                        </li>
+                        <li style="--dot: var(--w3)">
+                            W3 Equinox <span class="where mono">World 3</span>
+                        </li>
+                        <li style="--dot: var(--w7)">
+                            Sushi Station
+                            <span class="where mono">World 7</span>
+                        </li>
+                        <li style="--dot: var(--w1)">
+                            Swishy Hoops <span class="where mono">World 1</span>
+                        </li>
+                        <li style="--dot: var(--w1)">
+                            Throwy Darts <span class="where mono">World 1</span>
+                        </li>
+                    </ul>
+                </div>
+            </header>
 
-    <div class="shot">
-      <div class="shot-title mono">A run list, as the program draws it</div>
-      <ul class="run">
-        <li style="--dot: var(--w3)">Refinery <span class="where mono">World 3</span></li>
-        <li style="--dot: var(--w7)">Sushi Station <span class="where mono">World 7</span></li>
-        <li style="--dot: var(--w1)">Swishy Hoops <span class="where mono">World 1</span></li>
-        <li style="--dot: var(--w1)">Throwy Darts <span class="where mono">World 1</span></li>
-      </ul>
-    </div>
-  </header>
+            <section>
+                <h2>What it can run</h2>
+                <p>
+                    Five tasks today. Each one knows how to travel to itself, so
+                    a list can cross the map without you.
+                </p>
 
-  <section>
-    <h2>What it can run</h2>
-    <p>Four tasks today. Each one knows how to travel to itself, so a list can
-       cross the map without you.</p>
+                <div class="tasks">
+                    <div class="task" style="--dot: var(--w3)">
+                        <span class="chip">World 3</span>
+                        <h3>Refinery</h3>
+                        <p>
+                            Ranks up every salt that is ready &mdash; and only
+                            the ones that are ready &mdash; then tells you which
+                            material ran out.
+                        </p>
+                    </div>
+                    <div class="task" style="--dot: var(--w3)">
+                        <span class="chip">World 3</span>
+                        <h3>W3 Equinox</h3>
+                        <p>
+                            Spends a full Equinox bar on the dream you pick.
+                            The bar takes about 41 hours to fill, so most runs
+                            correctly do nothing &mdash; which is the point of
+                            having it in a list.
+                        </p>
+                    </div>
+                    <div class="task" style="--dot: var(--w7)">
+                        <span class="chip">World 7</span>
+                        <h3>Sushi Station</h3>
+                        <p>
+                            Sorts the grid, merges what can be merged, refills
+                            with the cook button, and repeats until nothing is
+                            left to do.
+                        </p>
+                    </div>
+                    <div class="task" style="--dot: var(--w1)">
+                        <span class="chip">World 1</span>
+                        <h3>Swishy Hoops</h3>
+                        <p>
+                            Times each shot against the moving hoop, tracks the
+                            score, and stops when the lives run out.
+                        </p>
+                    </div>
+                    <div class="task" style="--dot: var(--w1)">
+                        <span class="chip">World 1</span>
+                        <h3>Throwy Darts</h3>
+                        <p>
+                            Reads the wind and the moving platform on every
+                            throw, aiming for bullseyes and the nine-in-a-row
+                            streak.
+                        </p>
+                    </div>
+                </div>
+            </section>
 
-    <div class="tasks">
-      <div class="task" style="--dot: var(--w3)">
-        <span class="chip">World 3</span>
-        <h3>Refinery</h3>
-        <p>Ranks up every salt that is ready &mdash; and only the ones that are
-           ready &mdash; then tells you which material ran out.</p>
-      </div>
-      <div class="task" style="--dot: var(--w7)">
-        <span class="chip">World 7</span>
-        <h3>Sushi Station</h3>
-        <p>Sorts the grid, merges what can be merged, refills with the cook
-           button, and repeats until nothing is left to do.</p>
-      </div>
-      <div class="task" style="--dot: var(--w1)">
-        <span class="chip">World 1</span>
-        <h3>Swishy Hoops</h3>
-        <p>Times each shot against the moving hoop, tracks the score, and stops
-           when the lives run out.</p>
-      </div>
-      <div class="task" style="--dot: var(--w1)">
-        <span class="chip">World 1</span>
-        <h3>Throwy Darts</h3>
-        <p>Reads the wind and the moving platform on every throw, aiming for
-           bullseyes and the nine-in-a-row streak.</p>
-      </div>
-    </div>
-  </section>
+            <section>
+                <h2>Before you download</h2>
+                <p>
+                    This is the part most download pages leave out. Read it
+                    first.
+                </p>
 
-  <section>
-    <h2>Before you download</h2>
-    <p>This is the part most download pages leave out. Read it first.</p>
+                <div class="warn">
+                    <h3>Automation may break the game's rules</h3>
+                    <p>
+                        Legends of Idleon is made by Lava, who sets the terms
+                        for how it may be played. This program is not made by,
+                        endorsed by, or connected to Lava in any way. Using it
+                        could get your account suspended or banned. That risk is
+                        yours to take, and it is a real one.
+                    </p>
+                </div>
 
-    <div class="warn">
-      <h3>Automation may break the game's rules</h3>
-      <p>Legends of Idleon is made by Lava, who sets the terms for how it may be
-         played. This program is not made by, endorsed by, or connected to Lava
-         in any way. Using it could get your account suspended or banned. That
-         risk is yours to take, and it is a real one.</p>
-    </div>
+                <div class="warn">
+                    <h3>
+                        Windows will warn you, and here is how to get past it
+                    </h3>
+                    <p>
+                        The download is not code-signed &mdash; a certificate
+                        costs more per year than this project has ever made
+                        &mdash; so SmartScreen shows &ldquo;Windows protected
+                        your PC&rdquo; and calls the publisher unknown. That
+                        warning is about the missing signature. It does not mean
+                        anything was found in the file.
+                    </p>
+                    <p>
+                        To run it anyway: click <b>More info</b> on that dialog,
+                        then the <b>Run anyway</b> button that appears
+                        underneath. You will see this once per version.
+                    </p>
+                    <p>
+                        You do not have to take my word for any of it. Compare
+                        what you downloaded against the SHA-256 above &mdash; in
+                        PowerShell:
+                    </p>
+                    <p>
+                        <span class="mono cmd"
+                            >Get-FileHash .\IdleonAutomator.exe -Algorithm
+                            SHA256</span
+                        >
+                    </p>
+                    <p>
+                        If the hash matches, the file is bit-for-bit what was
+                        published here. If it doesn't, don't run it &mdash; and
+                        please tell me on Discord.
+                    </p>
+                </div>
 
-    <div class="warn">
-      <h3>Windows will warn you, and here is how to get past it</h3>
-      <p>The download is not code-signed &mdash; a certificate costs more per year
-         than this project has ever made &mdash; so SmartScreen shows
-         &ldquo;Windows protected your PC&rdquo; and calls the publisher unknown.
-         That warning is about the missing signature. It does not mean anything
-         was found in the file.</p>
-      <p>To run it anyway: click <b>More info</b> on that dialog, then the
-         <b>Run anyway</b> button that appears underneath. You will see this once
-         per version.</p>
-      <p>You do not have to take my word for any of it. Compare what you
-         downloaded against the SHA-256 above &mdash; in PowerShell:</p>
-      <p><span class="mono cmd">Get-FileHash .\IdleonAutomator.exe -Algorithm
-         SHA256</span></p>
-      <p>If the hash matches, the file is bit-for-bit what was published here. If
-         it doesn't, don't run it &mdash; and please tell me on Discord.</p>
-    </div>
+                <div class="warn">
+                    <h3>Watch it the first few times</h3>
+                    <p>
+                        It reads the screen and clicks what it believes it sees,
+                        and a misread can cost resources. Press
+                        <span class="key">F6</span> to stop it, twice to force
+                        it and get your mouse back. Don't leave it running
+                        unattended until you have watched it do the thing you
+                        want, correctly, more than once.
+                    </p>
+                </div>
+            </section>
 
-    <div class="warn">
-      <h3>Watch it the first few times</h3>
-      <p>It reads the screen and clicks what it believes it sees, and a misread
-         can cost resources. Press <span class="key">F6</span> to stop it, twice
-         to force it and get your mouse back. Don't leave it running unattended
-         until you have watched it do the thing you want, correctly, more than
-         once.</p>
-    </div>
-  </section>
-
-  <!-- id so this can be linked directly: it doubles as the privacy statement,
+            <!-- id so this can be linked directly: it doubles as the privacy statement,
        which is what a reviewer or a cautious user will ask for by name. -->
-  <section id="privacy">
-    <h2>What it does with your data</h2>
-    <p>Nothing leaves your computer. There is no account, no telemetry, and no
-       server collecting anything. Your task lists and run history are saved in
-       <span class="mono">%APPDATA%\IdleonAutomator</span>, which is also why
-       replacing the program with a newer one keeps them.</p>
-    <p>The one exception: on startup it asks a small file on Cloudflare whether a
-       newer version exists. That tells Cloudflare your IP address, the way
-       visiting any website does. If there's an update you get a link &mdash; it
-       never downloads or installs anything by itself.</p>
-  </section>
+            <section id="privacy">
+                <h2>What it does with your data</h2>
+                <p>
+                    Nothing leaves your computer. There is no account, no
+                    telemetry, and no server collecting anything. Your task
+                    lists and run history are saved in
+                    <span class="mono">%APPDATA%\IdleonAutomator</span>, which
+                    is also why replacing the program with a newer one keeps
+                    them.
+                </p>
+                <p>
+                    The one exception: on startup it asks a small file on
+                    Cloudflare whether a newer version exists. That tells
+                    Cloudflare your IP address, the way visiting any website
+                    does. If there's an update you get a link &mdash; it never
+                    downloads or installs anything by itself.
+                </p>
+            </section>
 
-  <section>
-    <h2>Questions, ideas, problems</h2>
-    <p>The Discord is where new tasks get requested and where I post what's being
-       worked on. If the program has saved you an evening, the Ko-fi keeps it
-       going &mdash; but the program is free and stays free either way.</p>
+            <section>
+                <h2>Questions, ideas, problems</h2>
+                <p>
+                    The Discord is where new tasks get requested and where I
+                    post what's being worked on. If the program has saved you an
+                    evening, the Ko-fi keeps it going &mdash; but the program is
+                    free and stays free either way.
+                </p>
 
-    <div class="links">
-      <a class="link" style="--c: #5865F2" href="https://discord.gg/EqqvcFSPKp">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.3.5c1.6.4 2.9 1 4.2 1.9a14.4 14.4 0 0 0-12.6 0A13 13 0 0 1 11 3.5L10.7 3A19.8 19.8 0 0 0 5.7 4.4C2.6 9 1.8 13.5 2.2 17.9a19.9 19.9 0 0 0 6 3l1.3-1.8c-1-.4-1.9-.9-2.7-1.5l.6-.5a14.2 14.2 0 0 0 12.2 0l.6.5c-.8.6-1.8 1.1-2.7 1.5l1.3 1.8a19.9 19.9 0 0 0 6-3c.5-5.1-.8-9.6-3.2-13.5ZM9.3 15.3c-1.2 0-2.1-1.1-2.1-2.4 0-1.3.9-2.4 2.1-2.4 1.2 0 2.2 1.1 2.1 2.4 0 1.3-.9 2.4-2.1 2.4Zm5.4 0c-1.2 0-2.1-1.1-2.1-2.4 0-1.3.9-2.4 2.1-2.4 1.2 0 2.2 1.1 2.1 2.4 0 1.3-.9 2.4-2.1 2.4Z"/></svg>
-        Discord
-      </a>
-      <a class="link" style="--c: #FF5E5B" href="https://ko-fi.com/idleonautomater">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h13.2a4.8 4.8 0 0 1 .3 9.6h-.9A5.6 5.6 0 0 1 11.2 18H8.5A4.5 4.5 0 0 1 4 13.5V4Zm12.6 7.6h.6a2.8 2.8 0 0 0 0-5.6h-.6v5.6Z"/></svg>
-        Support the project
-      </a>
-    </div>
-  </section>
+                <div class="links">
+                    <a
+                        class="link"
+                        style="--c: #5865f2"
+                        href="https://discord.gg/EqqvcFSPKp"
+                    >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path
+                                d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.3.5c1.6.4 2.9 1 4.2 1.9a14.4 14.4 0 0 0-12.6 0A13 13 0 0 1 11 3.5L10.7 3A19.8 19.8 0 0 0 5.7 4.4C2.6 9 1.8 13.5 2.2 17.9a19.9 19.9 0 0 0 6 3l1.3-1.8c-1-.4-1.9-.9-2.7-1.5l.6-.5a14.2 14.2 0 0 0 12.2 0l.6.5c-.8.6-1.8 1.1-2.7 1.5l1.3 1.8a19.9 19.9 0 0 0 6-3c.5-5.1-.8-9.6-3.2-13.5ZM9.3 15.3c-1.2 0-2.1-1.1-2.1-2.4 0-1.3.9-2.4 2.1-2.4 1.2 0 2.2 1.1 2.1 2.4 0 1.3-.9 2.4-2.1 2.4Zm5.4 0c-1.2 0-2.1-1.1-2.1-2.4 0-1.3.9-2.4 2.1-2.4 1.2 0 2.2 1.1 2.1 2.4 0 1.3-.9 2.4-2.1 2.4Z"
+                            />
+                        </svg>
+                        Discord
+                    </a>
+                    <a
+                        class="link"
+                        style="--c: #ff5e5b"
+                        href="https://ko-fi.com/idleonautomater"
+                    >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path
+                                d="M4 4h13.2a4.8 4.8 0 0 1 .3 9.6h-.9A5.6 5.6 0 0 1 11.2 18H8.5A4.5 4.5 0 0 1 4 13.5V4Zm12.6 7.6h.6a2.8 2.8 0 0 0 0-5.6h-.6v5.6Z"
+                            />
+                        </svg>
+                        Support the project
+                    </a>
+                </div>
+            </section>
 
-  <footer>
-    <p><strong>Idleon Automator</strong> &mdash; a hobby program given away
-       as-is. Nobody owes you a working bot, a recovered account, or your
-       afternoon back.</p>
-    <p>Not affiliated with Lava or Legends of Idleon. Windows 10 and 11, 64-bit.</p>
-  </footer>
-
-</div>
-</body>
+            <footer>
+                <p>
+                    <strong>Idleon Automator</strong> &mdash; a hobby program
+                    given away as-is. Nobody owes you a working bot, a recovered
+                    account, or your afternoon back.
+                </p>
+                <p>
+                    Not affiliated with Lava or Legends of Idleon. Windows 10
+                    and 11, 64-bit.
+                </p>
+            </footer>
+        </div>
+    </body>
 </html>

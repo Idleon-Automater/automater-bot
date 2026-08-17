@@ -5,6 +5,20 @@ Site: `https://idleonautomater.pages.dev/`
 
 Everything derives from one constant, so there is only ever one version number to type.
 
+## Who does what
+
+Say "release 1.0.3" and Claude runs everything below except step 5, then stops and asks for
+the upload. The split is not about permission, it is about what a session can reach:
+
+| | Steps | Why |
+|---|---|---|
+| **Claude** | 1, 2, 3, 4, 6, 7 | Local commands, plus the push and the Pages deploy |
+| **You** | 5 — the R2 upload | Needs Cloudflare credentials that never live in a session |
+
+Two things Claude should ask about rather than decide: the **release notes** (what users are
+told changed is your call, not a summary of the diff), and anything that would **overwrite an
+existing `releases/<version>/`**.
+
 ---
 
 ## 1. Set the version
@@ -43,7 +57,7 @@ In `dist/version.json`, fill in `"notes"` — one sentence, shown to users in th
 
 All four must match `dist/version.json`.
 
-## 5. Upload to R2
+## 5. Upload to R2  — *yours*
 
 | From `dist\` | Goes to |
 |---|---|
@@ -57,8 +71,15 @@ keeps published hashes true and old download links alive.
 
 ```
 cd "C:\Claude Programs\Idleon programs\Automator"
-npx wrangler@3 pages deploy web --project-name=idleonautomater
+npx wrangler@3 pages deploy web --project-name=idleonautomater --commit-dirty=true
 ```
+
+**From the project root, not from `app/`** -- `web/` sits at the root, and running it from
+`app/` fails with `ENOENT: no such file or directory, scandir '...\app\web'`.
+
+Wrangler prints a per-deployment URL like `c4f5374a.idleonautomater.pages.dev`. That is not
+the live site; check `idleonautomater.pages.dev` itself, and do it with a fresh request --
+a cached response will happily show you the previous version and look like a failed deploy.
 
 ## 7. Check before announcing
 
