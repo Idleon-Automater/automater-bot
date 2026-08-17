@@ -47,7 +47,16 @@ def classify(frame, cam):
     # first version of this rejected every hoops frame it was given.
     if s < 80 or v < 40:
         return None
-    if h < 25:
+    # Darts measures H=9.6.  The upper bound was 25, which is far looser than
+    # that measurement supports, and it let a WARM PANEL through: with the
+    # refinery still open, this returned DARTS, so ensure_at reported "already
+    # at Throwy Darts", never travelled, and the darts engine then read the
+    # refinery as a finished game.  The whole list stopped in World 3 town.
+    #
+    # 18 keeps a wide margin either side of 9.6 while excluding the browns.
+    # It is deliberately a tightening toward the one number that was actually
+    # measured, rather than a new threshold invented to fit one bad frame.
+    if h < 18:
         return DARTS
     if 85 < h < 135:
         return HOOPS

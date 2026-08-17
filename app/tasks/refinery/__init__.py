@@ -166,8 +166,19 @@ class RefineryTask(Task):
                 short.append((i + 1, mx, my))
 
         if short:
+            # Say WHERE each one is, not just how many.  "3 material(s) have
+            # run out" tells you to go looking through three tabs of fuel
+            # plates; naming the tab and the row tells you where to look.
+            #
+            # Position rather than the material's name: the name is artwork
+            # beside the count, and reading it would mean another glyph
+            # reader.  Tab and row is what you navigate by anyway.
             yield Progress(f"NEEDS REFILL: {len(short)} material(s) have run "
-                           f"out - refill them by hand")
+                           f"out - refill them by hand:")
+            for tab, mx, my in short:
+                yield Progress(f"    tab {tab}, "
+                               f"{V.fuel_slot_name(mx, my)} "
+                               f"(the count is drawn in red)")
 
         # Leave the way we came in, so the next task starts from the town.
         click(926, 30, settle=1.2)

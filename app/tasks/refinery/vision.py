@@ -147,6 +147,30 @@ def missing_materials(frame):
     return found
 
 
+def fuel_slot_name(mx, my):
+    """
+    Which salt and which fuel row a red count sits in, as words.
+
+    FUEL_AREA is x 95..520, y 95..455, and holds the three salts' fuel plates
+    stacked down the panel.  Turning a pixel back into "salt 2, fuel row 3" is
+    arithmetic on that box -- and it is what the player navigates by, so it
+    beats a bare count of how many have run dry.
+
+    The material's own NAME is not read: it is artwork beside the count, and
+    reading it would need a glyph reader for a handful of words that the
+    position already identifies unambiguously.
+    """
+    x0, y0, x1, y1 = FUEL_AREA
+    salts = 3
+    band = max(1.0, (y1 - y0) / float(salts))
+    salt = min(salts, int((my - y0) / band) + 1)
+    # Within a salt's plate the components sit in a row, left to right.
+    cols = 4
+    step = max(1.0, (x1 - x0) / float(cols))
+    col = min(cols, int((mx - x0) / step) + 1)
+    return f"salt {salt}, fuel slot {col}"
+
+
 def is_refinery(frame):
     """
     Whether the refinery panel is what is on screen.
