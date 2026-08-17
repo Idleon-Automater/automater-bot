@@ -36,17 +36,9 @@ def task_factories():
     from tasks.refinery import RefineryTask
     from tasks.equinox import EquinoxTask
 
-    out = {cls.name: cls
-           for cls in (SushiTask, DartsTask, HoopsTask, RefineryTask,
-                       EquinoxTask)}
-    # TEMPORARY: one pretend task, so a run can be exercised without the game.
-    # Delete tasks/demo/ and these three lines together.
-    try:
-        from tasks.demo import DemoTask
-        out[DemoTask.name] = DemoTask
-    except ImportError:
-        pass
-    return out
+    return {cls.name: cls
+            for cls in (SushiTask, DartsTask, HoopsTask, RefineryTask,
+                        EquinoxTask)}
 
 
 # Names tasks used to have.  A saved list stores the name, so renaming a task
