@@ -60,8 +60,8 @@ class RefineryTask(Task):
         Param("check_all_tabs", "Check every salt tab", "bool", default=True,
               help="Off = only the tab that is already showing"),
     ]
-    # A few seconds of travel plus a handful of clicks per tab.
-    nominal_seconds = 45.0
+    # Measured over real runs: 16-18s including the trip to town.
+    nominal_seconds = 18.0
 
     location = Location(
         world=3,

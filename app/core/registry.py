@@ -81,10 +81,24 @@ def load_history():
 
 
 def record_run(name, seconds, ok):
-    """Append a run's duration so future estimates get better."""
+    """
+    Append a run's duration so future estimates get better.
+
+    ONLY successful runs go into the timing history.  A task that was skipped
+    -- wrong screen, could not travel, on cooldown -- is over in a few seconds,
+    and those seconds are not a sample of how long the task takes; they are a
+    sample of how long it takes to give up.  Mixed into the median they drag it
+    towards zero: after a session of failed attempts, Swishy Hoops estimated
+    25 seconds for a game that reliably takes six and a half minutes, and every
+    list containing it under-promised by the same margin.
+
+    `last` still records the failure, because "when did this last run, and did
+    it work" is a different question from "how long does it take".
+    """
     h = load_history()
     entry = h.setdefault(name, {"runs": [], "last": None})
-    entry["runs"] = (entry["runs"] + [round(seconds, 1)])[-20:]
+    if ok:
+        entry["runs"] = (entry["runs"] + [round(seconds, 1)])[-20:]
     entry["last"] = {"at": time.time(), "seconds": round(seconds, 1), "ok": ok}
     try:
         with open(_history_path(), "w") as f:
@@ -94,9 +108,18 @@ def record_run(name, seconds, ok):
 
 
 def estimate_for(task):
-    """Seconds this task is expected to take, from history where available."""
+    """
+    Seconds this task is expected to take, from history where available.
+
+    ALWAYS asks the task, even with no history to offer it.  The short-circuit
+    that used to return `nominal_seconds` directly skipped every task's own
+    estimate() -- so Sushi ignored its own time limit and reported 1m 30s for a
+    30-minute run, and Swishy Hoops quoted the same figure for one game as for
+    three.  The default estimate() already falls back to nominal, so there is
+    nothing to gain by going around it.
+    """
     runs = load_history().get(task.name, {}).get("runs", [])
-    return task.estimate(runs) if runs else task.nominal_seconds
+    return task.estimate(runs)
 
 
 def format_eta(seconds):

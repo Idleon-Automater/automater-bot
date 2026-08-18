@@ -93,6 +93,25 @@ class SushiTask(Task):
     # so a few minutes is enough to have something to spend again.
     IDLE_WAIT_S = 300.0
 
+    # Roughly what travelling to World 7 town and opening the station costs,
+    # on top of whatever running time was asked for.
+    TRAVEL_S = 25.0
+
+    def estimate(self, history=None):
+        """
+        The setting, not the history.
+
+        Sushi runs for exactly as long as it is told, so past runs say nothing
+        about the next one -- "typically 1m 30s" was the median of however long
+        earlier runs happened to be set to, which is a fact about the past and
+        not a prediction. Anything with a time limit knows its own answer.
+        """
+        if self.max_minutes is None:
+            # Endless: the list panel labels it separately, and any number here
+            # would be a guess presented as an estimate.
+            return super().estimate(history)
+        return self.max_minutes * 60.0 + self.TRAVEL_S
+
     def __init__(self, max_minutes=30, lock_window=False):
         # This used to be `max_cycles`, which no parameter ever set -- so
         # `max_minutes` was stored as a stray attribute and the run loop, which

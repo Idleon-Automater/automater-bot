@@ -54,6 +54,27 @@ class _MinigameTask(Task):
     kind = None                        # minigame.DARTS or minigame.HOOPS
     screen_name = "the minigame"
 
+    # The wait between games, which the bot sits out rather than the user.  It
+    # ramps with play and tops out around a quarter of an hour, so a two-game
+    # request is mostly waiting -- and an estimate that ignores it is wrong by
+    # more than the games themselves take.
+    COOLDOWN_S = 900.0
+
+    def estimate(self, history=None):
+        """
+        One game from history, plus the cooldowns between any extras.
+
+        The base class takes the median of past runs, which is right for a
+        single game and quietly wrong for several: history records the whole
+        task, so a "3 games" estimate built from one-game runs would be a third
+        of the truth, and the list's total time with it.
+        """
+        one = super().estimate(history)
+        n = getattr(self, "games", 1)
+        if n is None or n <= 1:
+            return one
+        return one * n + self.COOLDOWN_S * (n - 1)
+
     def __init__(self, lock_window=False, at=(0, 0)):
         self.lock_window = lock_window
         self.at = at
@@ -114,9 +135,9 @@ class DartsTask(_MinigameTask):
                    "No limit = keep going until you stop it."),
     ]
 
-    # A full darts run is a few minutes; replaced by the measured median once
-    # the task has run a few times.
-    nominal_seconds = 240.0
+    # Measured over real runs: 7m 26s and 5m 15s for a full set of darts.
+    # Replaced by the median of actual runs once there are a few.
+    nominal_seconds = 400.0
 
     # Winding Willows, not the World 1 town -- so this is the long route:
     # open the map, pick the world, double-click the map's own marker.  That
@@ -214,7 +235,10 @@ class HoopsTask(_MinigameTask):
                    "starts again. No limit = keep going until you stop it."),
     ]
 
-    nominal_seconds = 180.0
+    # Measured over real runs to score 53-56: 6m 44s and 6m 32s.  The old
+    # 180 was less than half of that, so a list of three hoops games
+    # promised 9 minutes and took 20.
+    nominal_seconds = 400.0
 
     # Valley of the Beans, reached the same way as darts.
     location = Location(
