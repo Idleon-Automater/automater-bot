@@ -130,14 +130,32 @@ def rename(old, new):
         _write_all(data)
 
 
-# What a brand-new install starts with.  A starting point to edit, not a
-# recommendation: the split is by how often each thing is worth doing.
-#   Daily   -- the refinery ranks up several times a day, the Equinox bar fills
-#              about every 41 hours, and sushi is worth a pass whenever.
-#   Weekly  -- the two minigames, which are slower and gated by cooldowns.
+# What a brand-new install starts with: a working pair of lists to edit, not an
+# empty window and a blank page.
+#
+# These are a real player's own Daily and Weekly, settings and all, rather than
+# something composed to look tidy -- which is why Daily runs the minigames and
+# sushi twice round. The two passes are deliberate: the second set of games
+# happens after the first cooldown has expired, and the last sushi is left
+# unlimited so the list ends by grinding until you stop it.
 STARTER_LISTS = [
-    ("Daily", ["Refinery", "W3 Equinox", "Sushi Station"]),
-    ("Weekly", ["Swishy Hoops", "Throwy Darts"]),
+    ("Daily", [
+        ("Refinery",      {"check_all_tabs": True}),
+        ("Swishy Hoops",  {"games": 1, "max_score": 55}),
+        ("Throwy Darts",  {"games": 1, "max_score": 250}),
+        ("Sushi Station", {"max_minutes": 60.0}),
+        ("Swishy Hoops",  {"games": 1, "max_score": 55}),
+        ("Throwy Darts",  {"games": 1, "max_score": 240}),
+        # Unlimited, and last: the endless slot a list is allowed exactly one
+        # of, at the end.
+        ("Sushi Station", {"max_minutes": None}),
+    ]),
+    ("Weekly", [
+        ("W3 Equinox",    {"dream": "Equinox Symbols"}),
+        ("Swishy Hoops",  {"games": 1, "max_score": 48}),
+        ("Throwy Darts",  {"games": 1, "max_score": 250}),
+        ("Sushi Station", {"max_minutes": 45.0}),
+    ]),
 ]
 
 
@@ -157,8 +175,8 @@ def seed_starters():
     settings.set("starter_lists_seeded", True)
     if names():
         return False              # already has lists; leave them entirely alone
-    for name, tasks in STARTER_LISTS:
-        save(name, [{"task": t, "params": {}} for t in tasks])
+    for name, entries in STARTER_LISTS:
+        save(name, [{"task": t, "params": dict(p)} for t, p in entries])
     return True
 
 
