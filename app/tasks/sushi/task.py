@@ -143,6 +143,8 @@ class SushiTask(Task):
             occupied = sum(1 for v in board if v >= 0)
             top = max((v for v in board if v >= 0), default=-1) + 1
             best_tier = max(best_tier, top)
+            # The WHOLE board, not just how full it is.  See below.
+            before_board = list(board)
 
             # One round of the engine's own loop, with its output routed into
             # the run log.
@@ -176,7 +178,23 @@ class SushiTask(Task):
                 f"cycle {cycles}: board {n_before} -> {after}, top tier {top}",
                 detail={"cycle": cycles, "occupied": after, "top_tier": top})
 
-            if after == n_before and cycles > 1:
+            # PROGRESS IS THE BOARD'S CONTENTS, NOT HOW FULL IT IS.
+            #
+            # A cycle merges until nothing is left, then cooks the board back
+            # to full -- so the occupied count ends where it started, every
+            # time, no matter how much work was done.  Comparing counts made a
+            # cycle of 64 merges that lifted tiers 27 through 35 report
+            # "nothing changed", and then wait five minutes for fuel it did not
+            # need.  One run spent 20 of its 36 minutes idling with a board
+            # full of merges available.
+            #
+            # The tier list does change: merges leave higher tiers, cooking
+            # refills the base. If that list is identical, nothing happened.
+            after_board, _ = sushi_bot.board_and_mask()
+            unchanged = (after_board is not None
+                         and list(after_board) == before_board)
+
+            if unchanged and cycles > 1:
                 # A cycle that changed nothing means there is nothing to merge
                 # and no fuel to make more with.  Whether that is "finished"
                 # depends on what was asked for.
