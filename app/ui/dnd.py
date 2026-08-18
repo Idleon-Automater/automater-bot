@@ -20,7 +20,7 @@ task called "Task 1" dragged from a text editor would land in the run list.
 
 import json
 
-from PySide6.QtCore import QMimeData, Qt
+from PySide6.QtCore import QMimeData, QPoint, Qt
 from PySide6.QtGui import QDrag
 
 MIME = "application/x-idleon-task"
@@ -59,7 +59,7 @@ def start_drag(widget, task_name, params=None, source_row=-1):
     """
     drag = QDrag(widget)
     drag.setMimeData(make_mime(task_name, params, source_row))
-    _attach_ghost(drag, widget)
+    _attach_ghost(drag, task_name)
     # CopyAction only.  Offering MoveAction lets QAbstractItemView delete the
     # source row on its own once the drop is accepted -- which, combined with
     # the move this code already does, removed the task twice and emptied the
@@ -68,49 +68,54 @@ def start_drag(widget, task_name, params=None, source_row=-1):
     return drag.target()
 
 
-def _attach_ghost(drag, widget):
+def _attach_ghost(drag, task_name):
     """
-    Carry a faded copy of the dragged thing under the cursor.
+    Carry a small faded label of the task under the cursor.
 
-    Qt already draws whatever pixmap a QDrag is given, so this is only about
-    supplying one: the widget paints itself into an image, the image is
-    composited at reduced opacity, and Qt does the rest.  No artwork ships, no
-    library is added, and nothing changes if it fails -- a drag without a
-    pixmap is exactly the drag that happened before.
+    DRAWN, not photographed.  The first version grabbed the widget itself,
+    which is the obvious thing and looks wrong in practice: a run-list row is
+    the full width of the list and carries its selected-state fill, so dragging
+    one produced a 400 px dark slab following the pointer.  A chip and a row
+    also look nothing alike, so the same gesture had two different ghosts.
 
-    The hot spot is where the pointer was inside the widget, so the ghost sits
-    under the cursor at the same place the real one did rather than snapping a
-    corner to it.
+    Drawing one small pill gives both the same, sized to the words rather than
+    to whatever widget the drag started from.  Nothing ships to support it --
+    no artwork, and every class used here is already in the program.
     """
     try:
-        from PySide6.QtCore import QPoint
-        from PySide6.QtGui import QCursor, QPainter, QPixmap
+        from PySide6.QtCore import QRectF
+        from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPen, QPixmap
+        from PySide6.QtWidgets import QApplication
 
-        # A list hands its whole self to start_drag, so grabbing the widget
-        # would photograph every row.  When it is an item view, photograph just
-        # the row being dragged -- worked out here rather than by giving
-        # start_drag another argument, so no caller has to know about ghosts.
-        item = (widget.currentItem() if hasattr(widget, "currentItem")
-                else None)
-        if item is not None and hasattr(widget, "visualItemRect"):
-            rect = widget.visualItemRect(item)
-            src = widget.viewport().grab(rect)
-        else:
-            src = widget.grab()
-        if src.isNull() or src.width() < 2 or src.height() < 2:
-            return
-        ghost = QPixmap(src.size())
+        from ui import theme
+
+        # The application's own font, bolded -- the same thing the list delegate
+        # does for a selected row, so the ghost is in the program's typeface
+        # rather than whatever the platform default happens to be.
+        font = QApplication.font()
+        font.setBold(True)
+        fm = QFontMetrics(font)
+        pad_x, pad_y = 12, 6
+        w = fm.horizontalAdvance(task_name) + pad_x * 2
+        h = fm.height() + pad_y * 2
+
+        ghost = QPixmap(w, h)
         ghost.fill(Qt.transparent)
         p = QPainter(ghost)
-        p.setOpacity(0.6)
-        p.drawPixmap(0, 0, src)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setOpacity(0.75)
+        p.setBrush(QColor(theme.PANEL))
+        p.setPen(QPen(QColor(theme.BORDER), 2))
+        p.drawRoundedRect(QRectF(1, 1, w - 2, h - 2),
+                          theme.RADIUS, theme.RADIUS)
+        p.setPen(QColor(theme.TITLE))
+        p.setFont(font)
+        p.drawText(ghost.rect(), Qt.AlignCenter, task_name)
         p.end()
-        drag.setPixmap(ghost)
 
-        spot = widget.mapFromGlobal(QCursor.pos())
-        if widget.rect().contains(spot):
-            drag.setHotSpot(spot)
-        else:
-            drag.setHotSpot(QPoint(src.width() // 2, src.height() // 2))
+        drag.setPixmap(ghost)
+        # Just below and right of the pointer, so it never covers the drop
+        # placeholder the list draws to show where the task would land.
+        drag.setHotSpot(ghost.rect().topLeft() + QPoint(-10, -6))
     except Exception:
         pass          # a missing ghost is cosmetic; never break the drag
