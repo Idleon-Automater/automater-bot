@@ -130,6 +130,38 @@ def rename(old, new):
         _write_all(data)
 
 
+# What a brand-new install starts with.  A starting point to edit, not a
+# recommendation: the split is by how often each thing is worth doing.
+#   Daily   -- the refinery ranks up several times a day, the Equinox bar fills
+#              about every 41 hours, and sushi is worth a pass whenever.
+#   Weekly  -- the two minigames, which are slower and gated by cooldowns.
+STARTER_LISTS = [
+    ("Daily", ["Refinery", "W3 Equinox", "Sushi Station"]),
+    ("Weekly", ["Swishy Hoops", "Throwy Darts"]),
+]
+
+
+def seed_starters():
+    """
+    Create Daily and Weekly on a brand-new install.  Returns True if it did.
+
+    Guarded by a flag rather than by "are there any lists?", because those are
+    different questions.  Someone who deletes both lists on purpose has no
+    lists -- and must not find them back the next time they open the program,
+    nor after an update.  The flag records that the offer was made once.
+    """
+    from core import settings
+
+    if settings.get("starter_lists_seeded"):
+        return False
+    settings.set("starter_lists_seeded", True)
+    if names():
+        return False              # already has lists; leave them entirely alone
+    for name, tasks in STARTER_LISTS:
+        save(name, [{"task": t, "params": {}} for t in tasks])
+    return True
+
+
 def delete(name):
     data = _read_all()
     if data.pop(name, None) is not None:

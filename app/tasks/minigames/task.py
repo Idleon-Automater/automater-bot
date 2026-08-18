@@ -99,7 +99,7 @@ class DartsTask(_MinigameTask):
     # so "how many" is the only thing worth choosing, and the waiting is the
     # bot's problem rather than the user's.
     params = [
-        Param("max_score", "Stop at bullseyes", "int", default=500,
+        Param("max_score", "Stop at score", "int", default=500,
               minimum=1, maximum=5000,
               advise_above=500,
               advice=("Above the leaderboard range. A score this high may "

@@ -407,6 +407,11 @@ class Main(QMainWindow):
             settings.set("disclaimer_seen", True)
         self._report_lines = []
 
+        # A brand-new install gets Daily and Weekly to edit rather than an
+        # empty window.  Once only: deleting them, or updating the program,
+        # must not bring them back -- see tasklists.seed_starters.
+        tasklists.seed_starters()
+
         # Every saved list gets a tab; a fresh one if the user has none yet.
         for name in tasklists.names():
             self.new_tab(name, tasklists.load(name))

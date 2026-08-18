@@ -149,6 +149,8 @@ or double-click it, or drag it into the list. Drag a task inside the list to
 reorder it. To remove one, select it and press <i>Remove task</i>, or drag it
 out of the list.</p>
 
+<p><img src="{ART}/howto_drag.png" width="640"></p>
+
 <p><b>2. Set each task up.</b> Click a task in your list and its settings appear
 underneath &mdash; how long to run, what score to stop at, which upgrade to buy.
 Every task also says what it needs before it will work.</p>
@@ -189,6 +191,14 @@ working, not failing.</p>
 task did and why anything was skipped. A task that could not start says what it
 was missing rather than guessing.</p>
 """
+
+# Qt reads a local image in rich text through a file URL, and the panel is
+# built long before anyone knows where the program was installed -- so the path
+# is filled in here rather than written into the text above.  The pictures are
+# grabs of THIS window with an arrow drawn on, made by
+# _dev/make_howto_art.py, so they cannot drift out of date the way a
+# hand-drawn mock-up of a UI does.
+HOW_TO = HOW_TO.replace("{ART}", "file:///" + ART.replace(os.sep, "/"))
 
 
 class Panel(QWidget):
@@ -346,13 +356,21 @@ class Footer(QWidget):
                 " text-decoration: underline; }}"
                 "QPushButton:hover {{ color: {h}; }}")
 
-        # First of the three, and not muted like the others: it is the one a
-        # new user needs before their first run, and the one that answers "why
-        # did nothing happen" without them having to ask.
-        howto = QPushButton("How to use it")
+        # An outlined button, not a text link like Disclaimer.  Sitting in a
+        # row of quiet grey links it read as small print, which is the wrong
+        # weight for the one thing a first-time user should open BEFORE
+        # pressing Run -- it carries "leave the game visible", "do not touch
+        # the mouse" and "F6 to stop".  Same reasoning as the update badge:
+        # shape is what gets noticed, not colour.
+        howto = QPushButton("?  How to use it")
         howto.setCursor(Qt.PointingHandCursor)
-        howto.setStyleSheet(link.format(c=theme.TEXT, h=theme.TITLE,
-                                        s=theme.FS_SMALL))
+        howto.setStyleSheet(
+            f"QPushButton {{ background: transparent;"
+            f" border: 2px solid {theme.RUN_BG}; color: {theme.RUN_BG};"
+            f" border-radius: {theme.RADIUS}px; font-weight: bold;"
+            f" padding: 4px 12px; font-size: {theme.FS_SMALL}px; }}"
+            f"QPushButton:hover {{ background: {theme.RUN_BG};"
+            f" color: {theme.RUN_TEXT}; }}")
         howto.clicked.connect(self.show_how_to.emit)
 
         disc = QPushButton("Disclaimer")
