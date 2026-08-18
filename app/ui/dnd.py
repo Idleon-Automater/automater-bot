@@ -59,9 +59,58 @@ def start_drag(widget, task_name, params=None, source_row=-1):
     """
     drag = QDrag(widget)
     drag.setMimeData(make_mime(task_name, params, source_row))
+    _attach_ghost(drag, widget)
     # CopyAction only.  Offering MoveAction lets QAbstractItemView delete the
     # source row on its own once the drop is accepted -- which, combined with
     # the move this code already does, removed the task twice and emptied the
     # list.  Nothing here relies on Qt moving anything.
     drag.exec(Qt.CopyAction)
     return drag.target()
+
+
+def _attach_ghost(drag, widget):
+    """
+    Carry a faded copy of the dragged thing under the cursor.
+
+    Qt already draws whatever pixmap a QDrag is given, so this is only about
+    supplying one: the widget paints itself into an image, the image is
+    composited at reduced opacity, and Qt does the rest.  No artwork ships, no
+    library is added, and nothing changes if it fails -- a drag without a
+    pixmap is exactly the drag that happened before.
+
+    The hot spot is where the pointer was inside the widget, so the ghost sits
+    under the cursor at the same place the real one did rather than snapping a
+    corner to it.
+    """
+    try:
+        from PySide6.QtCore import QPoint
+        from PySide6.QtGui import QCursor, QPainter, QPixmap
+
+        # A list hands its whole self to start_drag, so grabbing the widget
+        # would photograph every row.  When it is an item view, photograph just
+        # the row being dragged -- worked out here rather than by giving
+        # start_drag another argument, so no caller has to know about ghosts.
+        item = (widget.currentItem() if hasattr(widget, "currentItem")
+                else None)
+        if item is not None and hasattr(widget, "visualItemRect"):
+            rect = widget.visualItemRect(item)
+            src = widget.viewport().grab(rect)
+        else:
+            src = widget.grab()
+        if src.isNull() or src.width() < 2 or src.height() < 2:
+            return
+        ghost = QPixmap(src.size())
+        ghost.fill(Qt.transparent)
+        p = QPainter(ghost)
+        p.setOpacity(0.6)
+        p.drawPixmap(0, 0, src)
+        p.end()
+        drag.setPixmap(ghost)
+
+        spot = widget.mapFromGlobal(QCursor.pos())
+        if widget.rect().contains(spot):
+            drag.setHotSpot(spot)
+        else:
+            drag.setHotSpot(QPoint(src.width() // 2, src.height() // 2))
+    except Exception:
+        pass          # a missing ghost is cosmetic; never break the drag
