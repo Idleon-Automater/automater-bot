@@ -40,9 +40,8 @@ class EquinoxTask(Task):
     description = ("Spends a full Equinox bar on the dream you choose. Does "
                    "nothing if the bar is not full yet.")
     requirements = [
-        "Have Equinox unlocked, and the World 3 map reachable",
-        "The bar fills about once every 41 hours, so most runs will "
-        "correctly do nothing",
+        "Have Equinox unlocked",
+        "Costs one teleport to reach Equinox Valley",
     ]
     params = [
         Param("dream", "Dream to upgrade", "choice",

@@ -87,12 +87,12 @@ class DartsTask(_MinigameTask):
     kind = minigame.DARTS
     screen_name = "Throwy Darts"
     world = 1
-    description = ("Plays Throwy Darts, aiming for bullseyes and a 9-in-a-row "
-                   "streak. Reads the wind and platform each throw.")
+    description = ("Travels to Winding Willows and plays Throwy Darts, aiming "
+                   "for nine bullseyes in a row. Reads the wind and platform "
+                   "on every throw, and keeps playing after the trophy to use "
+                   "the remaining darts.")
     requirements = [
-        "Open Throwy Darts (World 1 town) and be on the "
-        "throwing screen, not the menu",
-        "Leave the game window visible and unobscured; it reads the screen",
+        "Costs one teleport to reach Winding Willows",
     ]
     # How many games, and nothing else.  A game ends when the darts run out,
     # and the next one is gated by a cooldown that grows to about 15 minutes --
@@ -186,12 +186,12 @@ class HoopsTask(_MinigameTask):
     kind = minigame.HOOPS
     screen_name = "Swishy Hoops"
     world = 1
-    description = ("Plays Swishy Hoops, timing each shot against the moving "
-                   "hoop. Tracks the score and stops when the lives run out.")
+    description = ("Travels to Valley of the Beans and plays Swishy Hoops, "
+                   "timing each shot against the moving hoop. Stops at your "
+                   "chosen score by deliberately missing, so the run ends "
+                   "exactly there.")
     requirements = [
-        "Open Swishy Hoops (World 1 town) and be on the shooting screen",
-        "Start from a fresh game, or set the current score so the aim is right",
-        "Leave the game window visible and unobscured; it reads the screen",
+        "Costs one teleport to reach Valley of the Beans",
     ]
     # 55 is a hard ceiling, not a preference: past it the hoop moves faster
     # than the shot can be planned, so every further throw is a coin flip that

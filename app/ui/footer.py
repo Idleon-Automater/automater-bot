@@ -141,17 +141,67 @@ def kofi_icon(size=16, colour="#FF5E5B"):
     return QIcon(pix)
 
 
-class Disclaimer(QWidget):
+HOW_TO = """
+<h2>How to use it</h2>
+
+<p><b>1. Build a list.</b> Pick a task on the left and press <i>Add to list</i>,
+or double-click it, or drag it into the list. Drag a task inside the list to
+reorder it. To remove one, select it and press <i>Remove task</i>, or drag it
+out of the list.</p>
+
+<p><b>2. Set each task up.</b> Click a task in your list and its settings appear
+underneath &mdash; how long to run, what score to stop at, which upgrade to buy.
+Every task also says what it needs before it will work.</p>
+
+<p><b>3. Keep your lists.</b> Use the tabs at the top to make more than one
+&mdash; a Daily and a Weekly, say. Press <i>Save list</i> when the button is
+bright; washed out means there is nothing to save. Lists are kept between
+sessions, and survive updating the program.</p>
+
+<p><b>4. Press Run list.</b> The tasks run in order. Each one travels to itself,
+so the character does not need to start anywhere in particular.</p>
+
+<h2>While it runs</h2>
+
+<p><b>Leave the game window visible and unobscured.</b> The bot works by looking
+at the screen. If the game is minimised, behind another window, or scrolled off,
+it cannot see and it will stop rather than click blind.</p>
+
+<p><b>Do not touch the mouse.</b> The bot moves the pointer itself, and a nudge
+at the wrong moment lands a click somewhere it was not meant to go &mdash; which
+in the overworld moves your character and breaks every task after it.</p>
+
+<p><b>Press <span style="font-weight:bold">F6</span> to stop.</b> It finishes
+what it is doing and stops cleanly. <b>F6 again forces it</b> and gives the
+mouse straight back. This works even while the bot has the pointer.</p>
+
+<p><b>Some tasks spend a teleport.</b> Anything reached through the map rather
+than a town costs one of the daily allowance &mdash; the task says so in its
+requirements. Town routes are free.</p>
+
+<p><b>Doing nothing is often correct.</b> A refinery with nothing ready, or an
+Equinox bar that is not full, will report that and move on. That is the task
+working, not failing.</p>
+
+<h2>If something goes wrong</h2>
+
+<p>The <b>Last run</b> tab keeps the report from the last list, saying what each
+task did and why anything was skipped. A task that could not start says what it
+was missing rather than guessing.</p>
+"""
+
+
+class Panel(QWidget):
     """A panel that covers the window until it is dismissed."""
 
     closed = Signal()
 
-    def __init__(self, parent):
+    def __init__(self, parent, body=None):
         super().__init__(parent)
         self.setAutoFillBackground(True)
         self.setStyleSheet(f"background: {theme.BACKGROUND};")
 
-        text = QLabel(DISCLAIMER)
+        text = QLabel(DISCLAIMER if body is None else body)
         text.setWordWrap(True)
         text.setTextFormat(Qt.RichText)
         text.setAlignment(Qt.AlignTop)
@@ -278,9 +328,10 @@ class AfterRun(QWidget):
 
 
 class Footer(QWidget):
-    """Disclaimer, Discord, Ko-fi."""
+    """How to use it, Disclaimer, Discord, Ko-fi."""
 
     show_disclaimer = Signal()
+    show_how_to = Signal()
 
     def __init__(self):
         super().__init__()
@@ -294,6 +345,15 @@ class Footer(QWidget):
                 " color: {c}; padding: 3px 8px; font-size: {s}px;"
                 " text-decoration: underline; }}"
                 "QPushButton:hover {{ color: {h}; }}")
+
+        # First of the three, and not muted like the others: it is the one a
+        # new user needs before their first run, and the one that answers "why
+        # did nothing happen" without them having to ask.
+        howto = QPushButton("How to use it")
+        howto.setCursor(Qt.PointingHandCursor)
+        howto.setStyleSheet(link.format(c=theme.TEXT, h=theme.TITLE,
+                                        s=theme.FS_SMALL))
+        howto.clicked.connect(self.show_how_to.emit)
 
         disc = QPushButton("Disclaimer")
         disc.setCursor(Qt.PointingHandCursor)
@@ -330,6 +390,7 @@ class Footer(QWidget):
         # used as the whole control: beige at rest, red under the pointer.
         self.kofi = self.make_kofi()
 
+        row.addWidget(howto)
         row.addWidget(disc)
         row.addWidget(self.update_btn)
         row.addStretch()

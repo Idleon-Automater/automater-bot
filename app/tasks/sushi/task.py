@@ -52,13 +52,11 @@ import sushivision as V                 # noqa: E402
 class SushiTask(Task):
     name = "Sushi Station"
     world = 7
-    description = ("Sorts the grid, merges what can be merged, refills with the "
-                   "cook button, and repeats until nothing is left to do.")
+    description = ("Sorts the grid, merges everything it can, refills with the "
+                   "cook button, and repeats for as long as you set.")
     requirements = [
-        "Have the World 7 town teleport unlocked (it is the free route in; "
-        "without it the station has to be reached through Sushi Perimeter)",
-        "Turn the oven mitt OFF -- while it is on, drags do not register and "
-        "the bot will appear to do nothing",
+        "Have the World 7 town quick access unlocked (free route in; "
+        "otherwise it must be reached through Sushi Perimeter)",
         "Set the cook button to the tier you want made; a lower tier is "
         "cheaper in fuel and runs longer",
     ]

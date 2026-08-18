@@ -38,7 +38,7 @@ from core.task import Result, run_task
 from ui.lists import ListTab, cross_icon
 from ui.flow import TaskPalette
 from ui.metro import DONE, PROBLEM, RUNNING
-from ui.footer import AfterRun, Disclaimer, Footer
+from ui.footer import HOW_TO, AfterRun, Footer, Panel
 from ui.params import ParamEditor
 from ui import theme
 
@@ -300,6 +300,7 @@ class Main(QMainWindow):
 
         self.footer = Footer()
         self.footer.show_disclaimer.connect(self.open_disclaimer)
+        self.footer.show_how_to.connect(self.open_how_to)
 
         # The left panel does two jobs at two different times, and never both
         # at once: while you are building a list you need the task palette,
@@ -394,8 +395,10 @@ class Main(QMainWindow):
         # Parented to the WINDOW, not to the central widget: as a child of the
         # central widget it sat alongside the footer and left that strip
         # showing along the bottom.
-        self.disclaimer = Disclaimer(self)
+        self.disclaimer = Panel(self)
         self.disclaimer.hide()
+        self.how_to = Panel(self, HOW_TO)
+        self.how_to.hide()
         # Once, on the first launch ever.  A disclaimer nobody has read is
         # worth showing; one shown every time is one people learn to dismiss
         # without looking, which is worse than not showing it.
@@ -531,17 +534,26 @@ class Main(QMainWindow):
 
     def open_disclaimer(self):
         """Cover the window with the disclaimer until it is dismissed."""
-        self.disclaimer.setGeometry(self.rect())
-        self.disclaimer.raise_()
-        self.disclaimer.show()
-        self.disclaimer.setFocus()
+        self._cover(self.disclaimer)
+
+    def open_how_to(self):
+        """Cover the window with the how-to until it is dismissed."""
+        self._cover(self.how_to)
+
+    def _cover(self, panel):
+        panel.setGeometry(self.rect())
+        panel.raise_()
+        panel.show()
+        panel.setFocus()
 
     def resizeEvent(self, event):
-        # The panel is a child rather than a dialog, so it has to be told to
-        # keep covering the window when the window changes size.
+        # The panels are children rather than dialogs, so they have to be told
+        # to keep covering the window when the window changes size.
         super().resizeEvent(event)
-        if getattr(self, "disclaimer", None) and self.disclaimer.isVisible():
-            self.disclaimer.setGeometry(self.rect())
+        for name in ("disclaimer", "how_to"):
+            p = getattr(self, name, None)
+            if p is not None and p.isVisible():
+                p.setGeometry(self.rect())
 
     def rename_current(self, *_):
         """Ask for a new name for the list in view."""

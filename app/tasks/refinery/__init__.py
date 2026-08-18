@@ -52,10 +52,9 @@ NAV = os.path.join(_HERE, "nav")
 class RefineryTask(Task):
     name = "Refinery"
     world = 3
-    description = ("Ranks up every refinery salt that is ready, and reports "
-                   "any material that has run out so you know to refill it.")
+    description = "Upgrade any refinery ready to rank up."
     requirements = [
-        "Have the World 3 town teleport unlocked",
+        "Have the World 3 town quick access unlocked",
     ]
     params = [
         Param("check_all_tabs", "Check every salt tab", "bool", default=True,
