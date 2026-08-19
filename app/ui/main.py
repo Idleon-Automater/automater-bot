@@ -104,7 +104,7 @@ class UpdateCheck(QObject):
 class Runner(QThread):
     progress = Signal(str)
     task_started = Signal(int, str)
-    finished_one = Signal(int, str, float, bool, str)
+    finished_one = Signal(int, str, float, bool, str, object)
     all_done = Signal()
 
     def __init__(self, tasks, navigate=True):
@@ -170,7 +170,7 @@ class Runner(QThread):
             self.progress.emit(f"    {result.summary}  "
                                f"[{registry.format_eta(secs)}]")
             self.finished_one.emit(i, task.name, secs, result.ok,
-                                   result.summary)
+                                   result.summary, result.detail)
         self.all_done.emit()
 
 
@@ -406,6 +406,7 @@ class Main(QMainWindow):
             QTimer.singleShot(0, self.open_disclaimer)
             settings.set("disclaimer_seen", True)
         self._report_lines = []
+        self._hand_work = []
 
         # A brand-new install gets Daily and Weekly to edit rather than an
         # empty window.  Once only: deleting them, or updating the program,
@@ -608,7 +609,7 @@ class Main(QMainWindow):
     BAD = ("failed", "error", "could not", "cannot", "skipped", "refus",
            "not on screen", "traceback", "no module")
     WARN = ("stopped", "stalling", "stalled", "stall", "warning", "retry",
-            "waiting", "time limit", "nothing changed")
+            "waiting", "time limit", "nothing changed", "by hand")
 
     def log_line(self, text):
         """Append one activity line, coloured by what it appears to say."""
@@ -739,6 +740,7 @@ class Main(QMainWindow):
         self.left_stack.setCurrentIndex(1)          # show the report
         self.left_stack.setTabText(1, "Run in progress")
         self._report_lines = []
+        self._hand_work = []
         self._run_started = time.time()
         self._stopped_early = False
         self.note("list", f"List \"{tab.list_name}\" started -- "
@@ -801,10 +803,15 @@ class Main(QMainWindow):
             tab.queue.scrollToItem(tab.queue.item(row))
         self.note("start", f"{name} started")
 
-    def task_finished(self, row, name, seconds, ok, summary):
+    def task_finished(self, row, name, seconds, ok, summary, detail=None):
         tab = self.current_tab()
         if tab:
             tab.set_state(row, DONE if ok else PROBLEM)
+        # Anything the task could not do itself is held over to the closing
+        # line.  Named with the task, because "salt 3, fuel slot 2" means
+        # nothing on its own once four other tasks have run since.
+        for item in (detail or {}).get("needs_hand", []):
+            self._hand_work.append(f"{name}: {item}")
         self.note("done" if ok else "problem",
                   f"{summary}  ({registry.format_eta(seconds)})")
 
@@ -829,6 +836,9 @@ class Main(QMainWindow):
             "problem": ("#dc2626", "&#9679;"),
             "list":    ("{theme.TITLE}", "&#9632;"),
             "stopped": ("#b36b00", "&#9632;"),
+            # Amber and an arrow: not an error -- the run went fine -- but the
+            # one kind of line that is asking the reader for something.
+            "hand":    ("#b36b00", "&#8594;"),
         }
         done = sum(1 for r in self._report_lines if r["kind"] == "done")
         bad = sum(1 for r in self._report_lines if r["kind"] == "problem")
@@ -839,7 +849,8 @@ class Main(QMainWindow):
         rows = []
         for r in self._report_lines:
             colour, glyph = style.get(r["kind"], (theme.TITLE, "&#9679;"))
-            weight = "bold" if r["kind"] in ("problem", "list", "stopped") else "normal"
+            weight = ("bold" if r["kind"] in ("problem", "list", "stopped")
+                      else "normal")
             rows.append(
                 f"<tr>"
                 f"<td style='color:{colour}'>{glyph}</td>"
@@ -898,10 +909,21 @@ class Main(QMainWindow):
         # The report stays up after the run ends -- that is when it is read --
         # and the tab keeps the last run until the next one replaces it.
         self.left_stack.setTabText(1, "Last run")
+        # How it ended, and how long it took, in one line -- then whatever is
+        # still waiting on the player.  This is the only part of the run most
+        # people read, so it is the only place the leftovers are certain to be
+        # seen: by now the refinery's own report is a thousand lines up.
+        took = registry.format_eta(time.time()
+                                   - getattr(self, "_run_started", time.time()))
         if getattr(self, "_stopped_early", False):
-            self.note("stopped", "List stopped early")
+            self.note("stopped", f"List stopped early  [{took}]")
         else:
-            self.note("list", "List completed")
+            self.note("list", f"List completed  [{took}]")
+        hand = getattr(self, "_hand_work", [])
+        if hand:
+            self.note("hand", f"{len(hand)} thing(s) still to do by hand:")
+            for item in hand:
+                self.note("hand", item)
         if self.hotkey:
             self.hotkey.stop_watching()
             self.hotkey = None
@@ -914,7 +936,13 @@ class Main(QMainWindow):
         # fires while the thread is still winding down, so isRunning() is
         # still true and the closing line gets skipped.
         self.render_report()
-        self.log_line("--- finished ---")
+        how = ("List stopped early" if getattr(self, "_stopped_early", False)
+               else "List completed")
+        self.log_line(f"--- {how}  [{took}] ---")
+        if hand:
+            self.log_line(f"{len(hand)} thing(s) still to do by hand:")
+            for item in hand:
+                self.log_line(f"- {item}")
 
 
 ICON = os.path.join(os.path.dirname(os.path.abspath(__file__)),

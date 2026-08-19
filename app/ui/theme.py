@@ -101,7 +101,13 @@ def stylesheet():
     }}
     QTabWidget::pane {{
         border: {BORDER_WIDTH}px solid {BORDER};
-        border-radius: {RADIUS}px;
+        /* Square, and not by preference.  Qt draws a pane's border as four
+           separate edges and does not join them around a radius: asking for
+           one left the corner pixel and the two next to it unpainted, so
+           every panel had a small notch bitten out of each corner and the
+           radius itself never appeared.  A corner that meets is worth more
+           than a rounded one that does not. */
+        border-radius: 0px;
         background: {BACKGROUND};
     }}
     QTabBar::tab {{
@@ -159,6 +165,40 @@ def stylesheet():
     QPushButton:hover {{ background: {BORDER}; color: {TITLE}; }}
     QPushButton:disabled {{ color: {MUTED}; border-color: {BORDER_SOFT}; }}
     QToolButton {{ background: transparent; border: none; }}
+    /* Scroll bars.  Windows' own are 17px of grey trough, arrow buttons at
+       both ends and a square handle -- next to this palette they are the
+       loudest thing on the page, and the arrows are dead weight on a list
+       nobody scrolls one line at a time.  What is left is the handle: a slim
+       pill in the border colour, on no trough at all, that darkens under the
+       pointer.  The buttons are given zero size rather than hidden, because
+       Qt reserves their space either way. */
+    QScrollBar:vertical {{
+        background: transparent;
+        width: 10px;
+        margin: 0px;
+        border: none;
+    }}
+    QScrollBar:horizontal {{
+        background: transparent;
+        height: 10px;
+        margin: 0px;
+        border: none;
+    }}
+    QScrollBar::handle:vertical {{
+        background: {BORDER};
+        border-radius: 5px;
+        min-height: 28px;
+    }}
+    QScrollBar::handle:horizontal {{
+        background: {BORDER};
+        border-radius: 5px;
+        min-width: 28px;
+    }}
+    QScrollBar::handle:hover {{ background: {MUTED}; }}
+    QScrollBar::add-line, QScrollBar::sub-line {{
+        width: 0px; height: 0px; border: none; background: none;
+    }}
+    QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
     QSplitter::handle {{ background: {BORDER_SOFT}; }}
     QCheckBox {{ background: transparent; color: {TEXT}; }}
     """

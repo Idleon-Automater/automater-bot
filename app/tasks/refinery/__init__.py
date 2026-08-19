@@ -185,11 +185,20 @@ class RefineryTask(Task):
         self._short = short
 
     def report(self, steps, seconds):
+        from tasks.refinery import vision as V
+
         ranked = getattr(self, "_ranked", 0)
         short = getattr(self, "_short", [])
         bits = [f"{ranked} rank up(s)"]
         if short:
             bits.append(f"{len(short)} material(s) run dry - refill needed")
         return Result(ok=True, summary=f"Refinery: {', '.join(bits)}",
-                      detail={"ranked": ranked, "missing": len(short)},
+                      detail={"ranked": ranked, "missing": len(short),
+                              # Repeated at the end of the run: by then the
+                              # log above has scrolled past and this is the
+                              # one thing the player still has to act on.
+                              "needs_hand": [
+                                  f"tab {tab}, {V.fuel_slot_name(mx, my)} "
+                                  f"needs refilling by hand"
+                                  for tab, mx, my in short]},
                       seconds=seconds)

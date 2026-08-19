@@ -109,7 +109,21 @@ class Progress:
 
 @dataclass
 class Result:
-    """What a task achieved.  Shown in the run summary."""
+    """
+    What a task achieved.  Shown in the run summary.
+
+    `detail["needs_hand"]`, if present, is a list of short strings naming
+    things the program could not do and the player must: a refinery fuel slot
+    that has run dry, a material it cannot buy.  These are gathered from every
+    task and repeated under the closing line at the end of the run.
+
+    They are carried separately rather than left in the activity log because
+    of where they end up in it.  The refinery runs first, so its refill list
+    scrolls past a thousand lines of darts and sushi and is gone by the time
+    anyone reads the end -- which is the moment they are deciding what to go
+    and do.  A task reports the fact once; the run repeats it where it is
+    still useful.
+    """
     ok: bool
     summary: str
     detail: dict = field(default_factory=dict)
