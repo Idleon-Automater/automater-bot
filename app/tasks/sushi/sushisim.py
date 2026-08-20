@@ -33,57 +33,52 @@ GRID_COLS = 15
 BOARD_SLOTS = 120             # array size, not capacity
 CHAIN_MAX = 25
 
-# WHICH SLOTS THE PLAYER OWNS, AND WHY IT IS LEARNED RATHER THAN CONFIGURED
-# -------------------------------------------------------------------------
+# WHICH SLOTS THE PLAYER OWNS
+# ---------------------------
 # This used to be OWNED_SLOTS = 89, meaning "slots 0..88 are usable", raised by
-# hand whenever more were bought.  Both halves of that were wrong.
+# hand whenever more were bought.  It is not a setting at all: the game already
+# says, in Sushi[1], one entry per slot.  The game's own draw code is
 #
-# It is not a prefix.  Measured off a real board: slots 72-78 sat empty while
-# slot 116 held a sushi, so the owned region is a ragged shape and any single
-# number is too big at one end and too small at the other.  That is exactly the
-# failure the note above records -- compaction aimed at "holes" 72-78 that do
-# not exist and the drags went nowhere.
+#     0 <= Sushi[1][slot] ? "SushiSlot" + Sushi[1][slot] + ".png" : "Blank.png"
 #
-# And it cannot be read off the screen.  An empty owned cell and an unowned one
-# are the same dark green mat: sampled at every cell centre, all 32 empty cells
-# came back at brightness 61, with no outline, grid line or lock to separate
-# them.  There is genuinely nothing there to see.
+# so an entry of -1 is a cell that does not exist and anything else is a cell
+# that does -- 0 green, 1 red, 2 blue, 3 tan, which is why an empty cell is not
+# always the same colour.  chain_from() has always read this array for exactly
+# this test; nothing here is new information, it was simply never used to
+# decide where a drag could land.
 #
-# What CAN be known is the other direction: a slot holding a sushi is a slot
-# that exists.  So ownership is inferred from occupancy and never from absence.
-# The set only grows, it is never wrong about a slot it names, and it needs no
-# maintenance -- buy new cells, sushi cook into them, and the next board read
-# picks them up.  A slot that is owned but has never held anything stays
-# unknown, which costs a little capacity and cannot cause a wasted drag.
+# This matters because a drag onto a cell the player does not own is silently
+# swallowed: it looks like a successful drag and achieves nothing.  Holes are
+# therefore only ever taken from slots the mask says exist.
 _owned = set()
+
+
+def set_owned(mask):
+    """Take the owned region from Sushi[1].  Entry > -1 means the cell exists."""
+    _owned.clear()
+    _owned.update(i for i, v in enumerate(mask[:BOARD_SLOTS]) if v > -1)
+    return len(_owned)
 
 
 def note_board(board):
     """
-    Record every occupied slot as owned.  Called on each board reading.
+    Union in every occupied slot: a cell holding a sushi certainly exists.
 
-    Returns the slots this reading taught us about, so a caller can say when
-    the grid has grown.
+    A fallback, not the main road.  set_owned() is exact when the save can be
+    read, and the bot cannot run without the save anyway -- but a short or
+    unreadable mask should degrade to "use what we can see" rather than to
+    "the board has no cells".
     """
-    seen = {i for i, v in enumerate(board) if v >= 0}
-    new = seen - _owned
-    _owned.update(seen)
-    return sorted(new)
+    _owned.update(i for i, v in enumerate(board) if v >= 0)
 
 
 def owned_slots():
-    """The slots known to exist, as a sorted list."""
+    """The slots that exist, as a sorted list."""
     return sorted(_owned)
 
 
 def owned_count():
-    """How many slots are known to exist."""
     return len(_owned)
-
-
-def load_owned(slots):
-    """Seed the known set from a previous run."""
-    _owned.update(int(s) for s in slots if 0 <= int(s) < BOARD_SLOTS)
 
 
 def chain_from(board, slot, eligible=None):

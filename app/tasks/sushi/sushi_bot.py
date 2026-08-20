@@ -60,7 +60,20 @@ def board_and_mask():
               "running?  It may have crashed - restart it and try again.")
         return None, None
     mask = list(d.get(1, []))
-    mask += [0] * (M.BOARD_SLOTS - len(mask))   # past the mask -> eligible
+    # Past the end of the array is a cell that does not exist, not one that is
+    # merely ineligible.  This padded with 0 -- "eligible" -- which on a mask
+    # that had been silently truncated meant the planner believed in 60 cells
+    # the player has never owned.
+    mask += [-1] * (M.BOARD_SLOTS - len(mask))
+    known = M.set_owned(mask)
+    if known != board_and_mask._last_known:
+        if board_and_mask._last_known:
+            print(f"[Sushi] grid is now {known} cell(s), was "
+                  f"{board_and_mask._last_known}")
+        else:
+            print(f"[Sushi] grid is {known} cell(s) "
+                  f"of a possible {M.BOARD_SLOTS}")
+        board_and_mask._last_known = known
 
     before_dumps = set(glob.glob(os.path.join(sushivision.UNKNOWN_DIR, "*.png")))
     frame, scale = sushivision.grab_station()
@@ -93,15 +106,8 @@ def board_and_mask():
                      for s in range(M.BOARD_SLOTS)]
             occ = sum(1 for v in board if v >= 0)
     board_and_mask._last_occ = occ
-    # Every occupied cell is proof that cell exists.  This is the only way the
-    # owned region is ever learned -- an empty owned cell is indistinguishable
-    # from one that was never bought -- so it is recorded at the one place
-    # every board reading passes through.
-    grew = M.note_board(board)
-    if grew and board_and_mask._told_owned:
-        print(f"[Sushi] grid is bigger than it was: {len(grew)} new slot(s), "
-              f"{M.owned_count()} known in total")
-    board_and_mask._told_owned = True
+    # Belt and braces: a cell holding a sushi exists, whatever the mask says.
+    M.note_board(board)
     # Learn digit shapes from every successful read.  The digit reader is not
     # driving anything yet -- this only fills its library, so that when it does
     # take over, new tiers need no labelling at all.  Cheap, and it cannot
@@ -135,9 +141,8 @@ def board_and_mask():
 
 board_and_mask._last_unread = 0
 board_and_mask._last_occ = 0
-# The first reading of a run teaches us most of the grid at once, and saying
-# "48 new slots" then is noise.  Only growth after that is worth a line.
-board_and_mask._told_owned = False
+# Said once at the start of a run, and again only if it changes.
+board_and_mask._last_known = 0
 
 
 def eligible_runs(mask):

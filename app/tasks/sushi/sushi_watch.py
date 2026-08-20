@@ -75,10 +75,13 @@ def read_board(save_dir=SAVE_DIR, want_src=False):
             # the delimiter, trust the domain: tier is 0..MAX_TIER-1 in storage,
             # -1 is empty, and anything else means the array ended.
             for m in re.finditer(rb"y5:Sushi(.{0,1600})", blob, re.S):
-                nums = re.findall(r"i(-?\d+)", m.group(1).decode("ascii", "ignore"))
+                # Zeros again -- see read_sushi.  A stored 0 is tier 1, which
+                # is rare on a developed board and is why this went unnoticed.
+                nums = re.findall(r"(z|i-?\d+)",
+                                  m.group(1).decode("ascii", "ignore"))
                 board = []
                 for x in nums:
-                    v = int(x)
+                    v = 0 if x == "z" else int(x[1:])
                     if v < -1 or v >= MAX_TIER:
                         break
                     board.append(v)
@@ -208,7 +211,13 @@ def read_sushi(save_dir=SAVE_DIR):
             except OSError:
                 continue
             for m in re.finditer(rb"y5:Sushi(.{0,6000})", blob, re.S):
-                toks = re.findall(r"(a+|h+|i-?\d+|d[\d.eE+-]+)",
+                # `z` is how this format writes integer zero, and leaving it
+                # out of the pattern did not produce a zero -- it produced
+                # NOTHING, so every zero silently vanished and everything after
+                # it shifted down an index.  Sushi[1] came back 60 long instead
+                # of 120 and misaligned, which is not a subtle wrongness: that
+                # array says which cells exist and which merges chain.
+                toks = re.findall(r"(a+|h+|z|i-?\d+|d[\d.eE+-]+)",
                                   m.group(1).decode("ascii", "ignore"))
                 if len(toks) < 150:
                     continue
@@ -227,7 +236,9 @@ def read_sushi(save_dir=SAVE_DIR):
                         if t == "hh":
                             break
                     elif cur is not None:
-                        cur.append(int(t[1:]) if t[0] == "i" else float(t[1:]))
+                        cur.append(0 if t == "z" else
+                                   int(t[1:]) if t[0] == "i" else
+                                   float(t[1:]))
                 if subs.get(0) and len(subs[0]) >= 100:
                     best = subs
         return best
