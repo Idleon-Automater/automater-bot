@@ -30,12 +30,60 @@ GRID_COLS = 15
 # them -- five compaction drags into slots 72-78 did nothing for exactly this
 # reason, and cooking "fails" when the owned region is full even though the
 # array has room.
-#
-# Grows with upgrades, so it is a setting rather than a constant.  89 as of the
-# last check; raise it when you buy more slots.
 BOARD_SLOTS = 120             # array size, not capacity
-OWNED_SLOTS = 89              # cells actually usable
 CHAIN_MAX = 25
+
+# WHICH SLOTS THE PLAYER OWNS, AND WHY IT IS LEARNED RATHER THAN CONFIGURED
+# -------------------------------------------------------------------------
+# This used to be OWNED_SLOTS = 89, meaning "slots 0..88 are usable", raised by
+# hand whenever more were bought.  Both halves of that were wrong.
+#
+# It is not a prefix.  Measured off a real board: slots 72-78 sat empty while
+# slot 116 held a sushi, so the owned region is a ragged shape and any single
+# number is too big at one end and too small at the other.  That is exactly the
+# failure the note above records -- compaction aimed at "holes" 72-78 that do
+# not exist and the drags went nowhere.
+#
+# And it cannot be read off the screen.  An empty owned cell and an unowned one
+# are the same dark green mat: sampled at every cell centre, all 32 empty cells
+# came back at brightness 61, with no outline, grid line or lock to separate
+# them.  There is genuinely nothing there to see.
+#
+# What CAN be known is the other direction: a slot holding a sushi is a slot
+# that exists.  So ownership is inferred from occupancy and never from absence.
+# The set only grows, it is never wrong about a slot it names, and it needs no
+# maintenance -- buy new cells, sushi cook into them, and the next board read
+# picks them up.  A slot that is owned but has never held anything stays
+# unknown, which costs a little capacity and cannot cause a wasted drag.
+_owned = set()
+
+
+def note_board(board):
+    """
+    Record every occupied slot as owned.  Called on each board reading.
+
+    Returns the slots this reading taught us about, so a caller can say when
+    the grid has grown.
+    """
+    seen = {i for i, v in enumerate(board) if v >= 0}
+    new = seen - _owned
+    _owned.update(seen)
+    return sorted(new)
+
+
+def owned_slots():
+    """The slots known to exist, as a sorted list."""
+    return sorted(_owned)
+
+
+def owned_count():
+    """How many slots are known to exist."""
+    return len(_owned)
+
+
+def load_owned(slots):
+    """Seed the known set from a previous run."""
+    _owned.update(int(s) for s in slots if 0 <= int(s) < BOARD_SLOTS)
 
 
 def chain_from(board, slot, eligible=None):
@@ -354,16 +402,18 @@ def plan_compaction(board):
     first unoccupied slot.  Compacting between rounds is what keeps the chains
     long.
 
-    NOTE: dragging onto an empty cell is not yet confirmed to register.  Five
-    such drags failed once, but those targeted slots beyond the owned grid --
-    cells that do not exist -- rather than real empty ones.  Verify the first
-    compaction against the screen before trusting a long run of them.
+    Holes are only ever taken from the slots known to exist.  A drag onto a
+    cell the player does not own is silently swallowed by the game -- it looks
+    like a successful drag and achieves nothing -- so a hole that has never
+    been seen occupied is left alone rather than guessed at.
     """
     b = list(board)
+    note_board(b)
+    known = _owned or set(range(BOARD_SLOTS))
     drags = []
     while True:
-        holes = [i for i in range(OWNED_SLOTS) if b[i] < 0]
-        occupied = [i for i in range(OWNED_SLOTS) if b[i] >= 0]
+        holes = [i for i in sorted(known) if b[i] < 0]
+        occupied = [i for i in sorted(known) if b[i] >= 0]
         if not holes or not occupied:
             break
         hole = holes[0]

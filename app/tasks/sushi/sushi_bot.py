@@ -93,6 +93,15 @@ def board_and_mask():
                      for s in range(M.BOARD_SLOTS)]
             occ = sum(1 for v in board if v >= 0)
     board_and_mask._last_occ = occ
+    # Every occupied cell is proof that cell exists.  This is the only way the
+    # owned region is ever learned -- an empty owned cell is indistinguishable
+    # from one that was never bought -- so it is recorded at the one place
+    # every board reading passes through.
+    grew = M.note_board(board)
+    if grew and board_and_mask._told_owned:
+        print(f"[Sushi] grid is bigger than it was: {len(grew)} new slot(s), "
+              f"{M.owned_count()} known in total")
+    board_and_mask._told_owned = True
     # Learn digit shapes from every successful read.  The digit reader is not
     # driving anything yet -- this only fills its library, so that when it does
     # take over, new tiers need no labelling at all.  Cheap, and it cannot
@@ -126,6 +135,9 @@ def board_and_mask():
 
 board_and_mask._last_unread = 0
 board_and_mask._last_occ = 0
+# The first reading of a run teaches us most of the grid at once, and saying
+# "48 new slots" then is noise.  Only growth after that is worth a line.
+board_and_mask._told_owned = False
 
 
 def eligible_runs(mask):
@@ -565,9 +577,17 @@ def cycle(rect, clicker, rounds=3, merges=60, cooks=30,
         # A burst is self-correcting: presses that cannot afford fuel or find a
         # free cell simply do nothing, and an extra click costs nothing.
         # Randomised so the count is not identical every cycle.
-        room = max(0, M.OWNED_SLOTS - before)
+        # Measured against the whole array, not against the slots known to be
+        # owned.  The two uses of "capacity" want opposite errors: compaction
+        # must never aim at a cell that might not exist, but this gate only
+        # decides whether to bother holding a button that stops by itself.
+        # Gating it on the known-owned count would also make new slots
+        # undiscoverable -- the board would read as full, cooking would be
+        # skipped, and the sushi that would have revealed the new cells would
+        # never be made.  Cooking is how the grid grows into what was bought.
+        room = max(0, M.BOARD_SLOTS - before)
         if room == 0:
-            print(f"[Cycle] board at capacity ({before}/{M.OWNED_SLOTS})"
+            print(f"[Cycle] board at capacity ({before}/{M.BOARD_SLOTS})"
                   f" - skipping cook")
         else:
             # HOLD the button rather than counting presses.  It auto-repeats
@@ -578,7 +598,7 @@ def cycle(rect, clicker, rounds=3, merges=60, cooks=30,
                 return 1
             held = cook_hold(rect, clicker)
             print(f"[Cycle] held cook {held:.1f}s "
-                  f"({before}/{M.OWNED_SLOTS} filled)")
+                  f"({before} filled, {M.owned_count()} slot(s) known)")
             board, _ = board_and_mask()
             now = sum(1 for v in board if v >= 0) if board else before
             print(f"[Cycle] cooked: board {before} -> {now}")

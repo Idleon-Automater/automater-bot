@@ -24,6 +24,7 @@ import os
 import sys
 import time
 
+from core import settings
 from core.navigate import Location
 from core.streaming import EngineRun
 from core.task import Blocked, Param, Progress, Result, Task
@@ -59,6 +60,11 @@ class SushiTask(Task):
         "otherwise it must be reached through Sushi Perimeter)",
         "Set the cook button to the tier you want made; a lower tier is "
         "cheaper in fuel and runs longer",
+        "Keep your unlocked cells in one solid block, filled from the "
+        "top-left. The bot works out which cells you own by watching where "
+        "sushi appear, so a scattered grid leaves gaps it will not use -- "
+        "and merges chain along the grid in reading order, so a block "
+        "chains further than a scattered one",
     ]
     # Sushi has no natural end -- it can always merge and cook again -- so the
     # only sensible limit is time.  Left blank it runs until stopped, which is
@@ -137,6 +143,13 @@ class SushiTask(Task):
     def run(self, stop=None):
         import gamewindow
         from clicker import Clicker
+
+        # Which cells the player owns is learned by watching sushi appear in
+        # them, so it is worth carrying between runs: a session that starts on
+        # a half-empty board would otherwise re-learn the grid from scratch and
+        # compact into only the part of it that happened to be full.  Kept here
+        # rather than in sushisim so that module stays runnable on its own.
+        M.load_owned(settings.get("sushi_owned_slots") or [])
 
         rect = gamewindow.acquire(lock=self.lock_window, x=0, y=0)
         clicker = Clicker()
@@ -243,8 +256,15 @@ class SushiTask(Task):
     def report(self, steps, seconds):
         top = getattr(self, "_best_tier", 0)
         cycles = getattr(self, "_cycles", len(steps))
+        # Remember the grid for next time.  Only ever grows, so there is
+        # nothing to invalidate -- a slot that existed does not stop existing.
+        try:
+            settings.set("sushi_owned_slots", M.owned_slots())
+        except Exception:
+            pass          # a run is not worth failing over a settings write
         return Result(
             ok=True,
             summary=f"Sushi: {cycles} cycle(s), top tier {top}",
-            detail={"cycles": cycles, "top_tier": top},
+            detail={"cycles": cycles, "top_tier": top,
+                    "owned_slots": M.owned_count()},
             seconds=seconds)
