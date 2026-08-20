@@ -218,6 +218,28 @@ class Task:
         """
         return None
 
+    def asleep(self) -> str | None:
+        """
+        Why this task would achieve nothing right now, or None to run it.
+
+        DIFFERENT FROM can_run(), and the difference is where it is asked.
+        can_run() is asked on arrival, after the travelling is done, and a
+        task that refuses there has already spent a teleport and opened the
+        map -- which is the part that goes wrong.  This is asked BEFORE the
+        journey, must answer from something already to hand (the save file,
+        a stored timestamp) and must never touch the screen or the game.
+
+        The answer is shown to the user as well as acted on, so it reads as a
+        countdown rather than a refusal: "costs reset in 1d 23h". A task that
+        is asleep is drawn faded in the list and passed over silently on the
+        way through, so a weekly task can sit permanently in a daily list
+        without anyone having to add and remove it.
+
+        Cheap enough to poll: the list asks every running task while it is on
+        screen. Anything expensive belongs behind a cache.
+        """
+        return None
+
     def estimate(self, history: list[float] | None = None) -> float:
         """Seconds this run is expected to take."""
         if history:

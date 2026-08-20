@@ -37,7 +37,7 @@ from core.hotkey import StopKey
 from core.task import Result, run_task
 from ui.lists import ListTab, cross_icon
 from ui.flow import TaskPalette
-from ui.metro import DONE, PROBLEM, RUNNING
+from ui.metro import ASLEEP, DONE, PROBLEM, RUNNING
 from ui.footer import HOW_TO, AfterRun, Footer, Panel
 from ui.params import ParamEditor
 from ui import theme
@@ -105,6 +105,7 @@ class Runner(QThread):
     progress = Signal(str)
     task_started = Signal(int, str)
     finished_one = Signal(int, str, float, bool, str, object)
+    skipped_one = Signal(int, str, str)
     all_done = Signal()
 
     def __init__(self, tasks, navigate=True):
@@ -145,6 +146,19 @@ class Runner(QThread):
         for i, task in enumerate(self.tasks):
             if self._stop:
                 break
+            # Asked BEFORE travelling, which is the whole point: a weekly
+            # task in a daily list should cost nothing on the six days it has
+            # nothing to do, rather than a teleport and a map screen.
+            try:
+                sleeping = task.asleep()
+            except Exception:
+                sleeping = None       # never let a check stop the list
+            if sleeping:
+                self.progress.emit(f"--- {task.name} ---")
+                self.progress.emit(f"    skipped: {sleeping}")
+                self.skipped_one.emit(i, task.name, sleeping)
+                continue
+
             self.task_started.emit(i, task.name)
             self.progress.emit(f"--- {task.name} ---")
             t0 = time.perf_counter()
@@ -407,6 +421,15 @@ class Main(QMainWindow):
             settings.set("disclaimer_seen", True)
         self._report_lines = []
         self._hand_work = []
+
+        # Keeps the countdowns in the run list honest.  A minute is chosen
+        # against what it is showing: the shortest thing here is hours away,
+        # so a finer tick would only cost a save read for a number that has
+        # not visibly moved.  The read behind it is cached anyway.
+        self._asleep_timer = QTimer(self)
+        self._asleep_timer.timeout.connect(self.refresh_asleep)
+        self._asleep_timer.start(60_000)
+        QTimer.singleShot(0, self.refresh_asleep)
 
         # A brand-new install gets Daily and Weekly to edit rather than an
         # empty window.  Once only: deleting them, or updating the program,
@@ -750,6 +773,7 @@ class Main(QMainWindow):
         self.runner.progress.connect(self.log_line)
         self.runner.task_started.connect(self.task_started)
         self.runner.finished_one.connect(self.task_finished)
+        self.runner.skipped_one.connect(self.task_skipped)
         self.runner.all_done.connect(self.run_finished)
         self.log_line(
             f"Press {STOP_KEY} to stop, {STOP_KEY} again to force "
@@ -790,6 +814,16 @@ class Main(QMainWindow):
 
     # ---- the metro line and the run report -------------------------------
 
+    def refresh_asleep(self):
+        """Re-ask every open list whether its tasks have anything to do."""
+        for i in range(self.tabs.count()):
+            tab = self.tabs.widget(i)
+            if hasattr(tab, "refresh_asleep"):
+                try:
+                    tab.refresh_asleep()
+                except Exception:
+                    pass          # a check that throws must not stop the UI
+
     def note(self, kind, text):
         """Record one event for the run report."""
         self._report_lines.append({"kind": kind, "text": text,
@@ -802,6 +836,13 @@ class Main(QMainWindow):
             tab.set_state(row, RUNNING)
             tab.queue.scrollToItem(tab.queue.item(row))
         self.note("start", f"{name} started")
+
+    def task_skipped(self, row, name, why):
+        """A task the run passed over because it had nothing to do yet."""
+        tab = self.current_tab()
+        if tab:
+            tab.set_state(row, ASLEEP)
+        self.note("asleep", f"{name} skipped - {why}")
 
     def task_finished(self, row, name, seconds, ok, summary, detail=None):
         tab = self.current_tab()
@@ -836,6 +877,9 @@ class Main(QMainWindow):
             "problem": ("#dc2626", "&#9679;"),
             "list":    ("{theme.TITLE}", "&#9632;"),
             "stopped": ("#b36b00", "&#9632;"),
+            # Passed over, not failed.  Grey and hollow so a run that skipped
+            # a weekly task does not look like a run that went wrong.
+            "asleep":  ("#8b93a7", "&#9675;"),
             # Amber and an arrow: not an error -- the run went fine -- but the
             # one kind of line that is asking the reader for something.
             "hand":    ("#b36b00", "&#8594;"),

@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QHBoxLayout, QLabel,
 from ui.dnd import make_mime, read_mime, start_drag
 from core import registry, tasklists
 from core.debuglog import log
-from ui.metro import (DONE, PENDING, PROBLEM, RUNNING, MetroDelegate)
+from ui.metro import (ASLEEP, DONE, PENDING, PROBLEM, RUNNING, MetroDelegate)
 from ui import theme
 
 ENTRY_ROLE = Qt.UserRole + 1
@@ -34,6 +34,10 @@ STATE_ROLE = Qt.UserRole + 2
 WORLD_ROLE = Qt.UserRole + 3
 TITLE_ROLE = Qt.UserRole + 4
 PARAMS_ROLE = Qt.UserRole + 5
+# The countdown shown on a task that has nothing to do yet, or None.  Held on
+# the item rather than asked for while painting: paint runs on every repaint
+# and asking the save file there would read it hundreds of times a second.
+ASLEEP_ROLE = Qt.UserRole + 6
 
 
 def pencil_icon(size=15, colour="#5a5a5a"):
@@ -259,8 +263,10 @@ class ListTab(QWidget):
 
         self.queue = TaskQueue(self)
         self.queue.changed.connect(self.entries_changed.emit)
-        self.queue.setItemDelegate(MetroDelegate(STATE_ROLE, WORLD_ROLE, TITLE_ROLE,
-                                        PARAMS_ROLE, self.queue))
+        self.queue.setItemDelegate(MetroDelegate(
+            STATE_ROLE, WORLD_ROLE, title_role=TITLE_ROLE,
+            asleep_role=ASLEEP_ROLE, params_role=PARAMS_ROLE,
+            parent=self.queue))
         # Tall enough that a long list is readable without scrolling, which is
         # the point of showing the run as a line rather than a log.
         # Low enough that the whole panel still fits when the window is
@@ -349,6 +355,7 @@ class ListTab(QWidget):
                                   "params": params or task.settings()})
         item.setData(STATE_ROLE, PENDING)
         item.setData(WORLD_ROLE, getattr(task, "world", 0))
+        item.setData(ASLEEP_ROLE, self._asleep_for(task))
         if at is None or at >= self.queue.count():
             self.queue.addItem(item)
         else:
@@ -411,6 +418,37 @@ class ListTab(QWidget):
         self.entries_changed.emit()
 
     # ---- run state (drives the metro line) -------------------------------
+
+    @staticmethod
+    def _asleep_for(task):
+        """The task's own countdown, or None.  Never raises."""
+        try:
+            return task.asleep()
+        except Exception:
+            return None               # a broken check must not blank the list
+
+    def refresh_asleep(self):
+        """
+        Re-ask every task whether it has anything to do.
+
+        Called on a timer, so a countdown in the list ticks down while it is
+        being looked at, and a task that comes due stops being faded without
+        the window having to be reopened.  Only touches rows whose answer
+        changed: setData on every row every minute repaints the whole list.
+        """
+        changed = False
+        for i in range(self.queue.count()):
+            item = self.queue.item(i)
+            entry = item.data(ENTRY_ROLE) or {}
+            task = registry.make_task(entry.get("task"), entry.get("params") or {})
+            if task is None:
+                continue
+            now = self._asleep_for(task)
+            if now != item.data(ASLEEP_ROLE):
+                item.setData(ASLEEP_ROLE, now)
+                changed = True
+        if changed:
+            self.queue.viewport().update()
 
     def set_state(self, row, state):
         item = self.queue.item(row)

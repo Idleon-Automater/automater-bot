@@ -35,6 +35,10 @@ PENDING = "pending"
 RUNNING = "running"
 DONE = "done"
 PROBLEM = "problem"
+# Nothing to do yet -- a weekly task on a day that is not its day.  Not a
+# failure and not an outcome: the run passed over it and will pick it up when
+# it is due.  See Task.asleep().
+ASLEEP = "asleep"
 
 COLOURS = {
     PENDING: QColor("#9aa0a6"),     # grey: not started
@@ -44,6 +48,10 @@ COLOURS = {
     # as the others: coming back to a finished run, "one of these did not
     # happen" is the single most important thing to see.
     PROBLEM: QColor("#dc2626"),
+    # Slate, and quiet.  A sleeping task is the one state the user is meant to
+    # notice and then ignore, so it must not compete with the three that mean
+    # something happened.
+    ASLEEP:  QColor("#8b93a7"),
 }
 
 
@@ -61,10 +69,12 @@ class MetroDelegate(QStyledItemDelegate):
     CARD_HEIGHT = theme.ROW_HEIGHT     # asked for directly, not left to the font
 
     def __init__(self, state_role, world_role, title_role=None,
+                 asleep_role=None,
                  params_role=None, parent=None):
         super().__init__(parent)
         self.state_role = state_role
         self.world_role = world_role
+        self.asleep_role = asleep_role
         # The task's name and its settings are drawn separately so the name can
         # be bold and the settings quiet.  Stored as two roles rather than
         # parsed back out of one string: the settings text is generated and
@@ -132,6 +142,15 @@ class MetroDelegate(QStyledItemDelegate):
         painter.save()
         painter.setRenderHint(painter.RenderHint.Antialiasing, True)
         selected = bool(option.state & QStyle.State_Selected)
+
+        # A sleeping task is drawn at half strength -- the whole card, border,
+        # text and all -- because the thing being said is "this one is not in
+        # play", and greying only the text still reads as a task that is about
+        # to run.  Opacity is set once here and covers everything drawn after
+        # it, so nothing has to remember to be faded.
+        asleep = self.asleep_role is not None and index.data(self.asleep_role)
+        if asleep:
+            painter.setOpacity(0.45)
         # Selected fills with the world's own colour rather than merely
         # thickening its border: at this row height a heavier outline is easy
         # to miss, and which task the settings panel is editing has to be
@@ -144,6 +163,21 @@ class MetroDelegate(QStyledItemDelegate):
         title = index.data(self.title_role) if self.title_role else None
         params = index.data(self.params_role) if self.params_role else None
         text_area = card.adjusted(10, 0, -8, 0)
+
+        # The reason goes on the right, where it does not push the task's own
+        # name around: which task this is stays the thing you read first, and
+        # the countdown is what you read if you wondered why it is faded.
+        if asleep:
+            font = painter.font()
+            font.setPixelSize(theme.FS_SMALL)
+            font.setBold(False)
+            painter.setFont(font)
+            painter.setPen(QPen(QColor("#ffffff") if selected
+                                else COLOURS[ASLEEP]))
+            painter.drawText(text_area, Qt.AlignVCenter | Qt.AlignRight,
+                             str(asleep))
+            text_area = text_area.adjusted(
+                0, 0, -QFontMetrics(font).horizontalAdvance(str(asleep)) - 12, 0)
 
         name_col = QColor("#ffffff") if selected else QColor(theme.TITLE)
         detail_col = QColor("#f0e8e4") if selected else QColor(theme.MUTED)

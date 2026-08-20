@@ -39,8 +39,26 @@ WEEK_S = 604800.0
 DAY_S = 86400.0
 
 
-def _newest_text(save_dir=SAVE_DIR):
+# The save is ~5 MB across several files and every read copies them all, so a
+# caller that polls -- and the run list polls, to keep a countdown fresh --
+# must not pay that each time.  Cached briefly: the game only flushes every
+# ~175 s, so anything shorter than that is re-reading the same bytes.
+_CACHE_S = 30.0
+_cache = {"at": 0.0, "text": None}
+
+
+def _newest_text(save_dir=SAVE_DIR, max_age=_CACHE_S):
     """The largest readable save blob as ascii, or None."""
+    now = time.time()
+    if max_age and _cache["text"] is not None and now - _cache["at"] < max_age:
+        return _cache["text"]
+    text = _read_newest(save_dir)
+    _cache["at"] = now
+    _cache["text"] = text
+    return text
+
+
+def _read_newest(save_dir=SAVE_DIR):
     files = []
     for pat in ("*.ldb", "*.log"):
         files += glob.glob(os.path.join(save_dir, pat))
