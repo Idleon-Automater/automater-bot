@@ -86,8 +86,12 @@ def board_and_mask():
         print("[Sushi] no tier templates in sushi_unknown/ - cannot read the "
               "board from screen")
         return None, None
-    board = [(sushivision.read_cell_tier(frame, s, lib, scale, dump=True) or 0) - 1
-             for s in range(M.BOARD_SLOTS)]
+    # read_board is DIGITS FIRST, templates second.  This used to call
+    # read_cell_tier directly, which is templates only -- so the digit reader
+    # existed, was wired into read_board, and nothing ever called it.  The
+    # visible cost was that a tier with no labelled crop read as an empty cell.
+    digits = sushivision.load_digit_masks()
+    board = sushivision.read_board(frame, scale, lib, dump=True, digits=digits)
 
     # Reject a frame captured mid-animation.
     #
@@ -102,25 +106,11 @@ def board_and_mask():
         time.sleep(0.4)
         frame, scale = sushivision.grab_station()
         if frame is not None:
-            board = [(sushivision.read_cell_tier(frame, s, lib, scale) or 0) - 1
-                     for s in range(M.BOARD_SLOTS)]
+            board = sushivision.read_board(frame, scale, lib, digits=digits)
             occ = sum(1 for v in board if v >= 0)
     board_and_mask._last_occ = occ
     # Belt and braces: a cell holding a sushi exists, whatever the mask says.
     M.note_board(board)
-    # Learn digit shapes from every successful read.  The digit reader is not
-    # driving anything yet -- this only fills its library, so that when it does
-    # take over, new tiers need no labelling at all.  Cheap, and it cannot
-    # affect the board that was just read.
-    try:
-        got = sushivision.harvest_digits(frame, board, scale)
-        if got:
-            digs = sorted(sushivision.load_digit_masks())
-            print(f"[Sushi] learned {got} new digit variant(s); "
-                  f"digits known: {''.join(digs)}")
-    except Exception:
-        pass
-
     # Count only what THIS read failed on.  Counting the whole folder reported
     # "118 cell(s) could not be read" on a board of 61 -- the folder had simply
     # accumulated across every previous run, and the number looked alarming

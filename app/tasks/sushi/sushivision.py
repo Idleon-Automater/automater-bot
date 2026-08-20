@@ -5,18 +5,39 @@ Read the Sushi Station off the screen.
 The save also holds the board, but it flushes only every ~175 s -- too stale to
 plan from and far too stale to verify with.  Reading pixels makes both instant.
 
-Each cell shows its tier as a two-digit number in the bottom-right corner.  The
-digits are drawn white/cyan/gold depending on the tier band, so matching keys on
-SHAPE after a brightness threshold and ignores colour entirely.
+Each cell shows its tier as a number in the bottom-right corner.  There are two
+readers for it, tried in that order.
 
-Matching is done on the WHOLE number, not on split digits.  Segmenting into
-single glyphs kept failing -- sprite highlights touch the digits and no crop or
-shape filter separated them reliably -- and with only ~30 tiers in play, one
-template per tier removes the problem rather than fighting it.
+DIGITS FIRST
+------------
+The number is cut at fixed columns into its glyphs and each glyph matched
+against a library of 0-9.  This is what lets the bot read a tier nobody has
+labelled: the digits generalise, so 53 and 61 read themselves the day they are
+first made, and so do the low tiers a developed board never shows.  The glyphs
+are matched on SHAPE alone -- the game draws the number white low down, gold in
+the thirties, cyan in the forties and green at fifty-plus, and that colour is
+noise.  The library is built by tools/build_digit_masks.py from the labelled
+tier crops and never changes at runtime.
+
+TIER TEMPLATES SECOND
+---------------------
+One template per tier, matched whole rather than split.  It only knows tiers
+somebody has saved a crop of, which is why it cannot stand alone: an unlabelled
+tier does not read as unknown, it reads as an EMPTY CELL, and the planner then
+treats an occupied cell as free space to drag into.  It stays because it is
+cheap and catches the occasional cell the digit reader declines.
+
+Matching is done on the WHOLE number there, not on split digits.  Segmenting
+into single glyphs kept failing at that stage -- sprite highlights touch the
+digits and no crop or shape filter separated them reliably -- and with only ~30
+tiers in play, one template per tier removed the problem rather than fighting
+it.  The digit reader above succeeds where that failed because it does not
+segment at all: it cuts at fixed columns, which is possible because the number
+is right-aligned and drawn at a fixed size.
 
 Templates live in sushi_tiers/ as <tier>.png, with <tier>_1.png, <tier>_2.png
 for background variants (cells can be plain, gold-bordered or blue-bordered).
-Cells that cannot be read are dumped to sushi_unknown/ for labelling.
+Cells that neither reader can read are dumped to sushi_unknown/ for labelling.
 """
 
 import glob
@@ -310,65 +331,150 @@ _DNX0, _DNX1 = 27, 46
 _DNY0, _DNY1 = 32, 42
 
 
+# Where the two glyphs sit inside the number region.
+#
+# The number is right-aligned in the corner and the game draws it at a fixed
+# size, so the glyphs land in the same columns every time: measured over 103
+# labelled crops, the left glyph occupies columns 0-7 and the right one 9-16,
+# with the gap closing to nothing on about a quarter of them.  Cutting at a
+# fixed column therefore beats splitting on blank columns, which is what the
+# old reader did -- when the two glyphs touched it saw one run 16 wide and gave
+# up, and that was 25 of those 103 crops.
+#
+# WIDE is 17 rather than 16 deliberately.  At 16 the right glyph lost its last
+# column on some cells, which cost about a tenth of the match score and pushed
+# three of seventeen live cells below threshold while still ranking the correct
+# digit first.
+_DIGIT_SPLIT = 8
+_DIGIT_WIDE = 17
+
+# A left slot with less ink than this is empty, not a digit: single-digit tiers
+# put nothing there.  A real glyph carries 15-25 pixels, so 4 is far below
+# anything genuine and well above stray sprite bleed.
+_MIN_INK = 4
+
+
+def cell_digit_mask(cell):
+    """
+    Binary mask of the number, from a native-resolution cell.
+
+    Deliberately colour-blind.  The digits are drawn in a different colour for
+    each tier band -- white low down, gold in the thirties, cyan in the
+    forties, green at fifty-plus -- but the SHAPE is identical, so colour is
+    noise here and nothing else.  The old rule asked for bright AND desaturated
+    pixels, which quietly cut into every saturated fill: a gold or green glyph
+    lost its edges and stopped matching the same glyph drawn in white.
+
+    Taking whatever is brightest in this particular region instead means the
+    threshold follows the fill wherever the palette puts it, and the floor of
+    120 stops a cell with no number at all from promoting its own background.
+    """
+    r = cell[_DNY0:_DNY1, _DNX0:_DNX1]
+    if r.size == 0:
+        return None
+    v = cv2.cvtColor(r, cv2.COLOR_BGR2HSV)[:, :, 2].astype(int)
+    return v >= max(120, int(v.max()) - 60)
+
+
 def digit_region(frame, slot, scale=1.0):
     """Binary mask of a cell's tier number, native scale, never resized."""
     cx, cy = M.slot_to_xy(slot)
-    x0 = int(round((cx - CELL_PAD + _DNX0) * scale))
-    x1 = int(round((cx - CELL_PAD + _DNX1) * scale))
-    y0 = int(round((cy - CELL_PAD + _DNY0) * scale))
-    y1 = int(round((cy - CELL_PAD + _DNY1) * scale))
-    r = frame[max(0, y0):y1, max(0, x0):x1]
-    if r.size == 0:
+    x0 = int(round((cx - CELL_PAD) * scale))
+    x1 = int(round((cx + CELL_PAD) * scale))
+    y0 = int(round((cy - CELL_PAD) * scale))
+    y1 = int(round((cy + CELL_PAD) * scale))
+    cell = frame[max(0, y0):y1, max(0, x0):x1]
+    if cell.shape[0] < _DNY1 or cell.shape[1] < _DNX1:
         return None
-    hsv = cv2.cvtColor(r, cv2.COLOR_BGR2HSV)
-    return ((hsv[:, :, 2] > _V_MIN) & (hsv[:, :, 1] < 120))
+    return cell_digit_mask(cell)
 
 
 def split_digits(mask):
     """
-    The glyphs in a number mask, left to right.
+    The number's glyphs, left to right, cut at fixed columns.
 
-    Splits on blank columns.  This works natively where it failed on resized
-    masks: the digits really are separated by clear columns at full resolution.
-    Leading sprite bleed is dropped by keeping only the RIGHTMOST two runs --
-    the number is right-aligned in its corner, so anything further left is not
-    part of it.
+    Returns one glyph for a single-digit number and two otherwise, so the
+    caller can tell 5 from 45 without a separate rule.
     """
     if mask is None or not mask.any():
         return []
-    cols = mask.sum(axis=0)
-    runs, start = [], None
-    for i in range(len(cols)):
-        if cols[i] and start is None:
-            start = i
-        elif not cols[i] and start is not None:
-            runs.append((start, i)); start = None
-    if start is not None:
-        runs.append((start, len(cols)))
-    runs = [r for r in runs if r[1] - r[0] >= 2]
-    return [mask[:, a:b] for a, b in runs[-2:]]
+    left = mask[:, 0:_DIGIT_SPLIT]
+    right = mask[:, _DIGIT_SPLIT:_DIGIT_WIDE]
+    if left.sum() < _MIN_INK:
+        return [right]
+    return [left, right]
+
+
+def _score_glyph(g, by_shape):
+    """
+    Best agreement between `g` and any variant, allowing a pixel of slide.
+
+    The number is not drawn on exactly the same pixel in every cell -- a shift
+    of one is common and costs a tenth of the score, which was enough on its
+    own to reject three of seventeen live cells whose correct digit was still
+    ranked first.  Nine offsets removes that whole class of miss.
+
+    `by_shape` is {shape: stacked array of variants}, compared all at once.
+    Looping over variants in Python instead cost 254 ms a board against 6 ms
+    for the tier templates, and the board is read several times a cycle.
+    """
+    stack = by_shape.get(g.shape)
+    if stack is None:
+        return 0.0
+    best = 0.0
+    for dy in (-1, 0, 1):
+        for dx in (-1, 0, 1):
+            shifted = np.roll(np.roll(g, dy, axis=0), dx, axis=1)
+            best = max(best, float((stack == shifted).mean(axis=(1, 2)).max()))
+    return best
 
 
 def load_digit_masks(path=DIGITS_FILE):
-    """{digit: [mask, ...]} harvested from the screen at native scale."""
+    """
+    {digit: {shape: stacked variants}} built by tools/build_digit_masks.py.
+
+    Grouped by shape and stacked here rather than at every comparison: the
+    left and right slots are different widths, so a digit's variants are not
+    all the same shape and only the matching ones can be compared at all.
+    """
     if not os.path.exists(path):
         return {}
     raw = json.load(open(path))
     out = {}
     for d, v in raw.items():
         variants = v if isinstance(v[0][0], list) else [v]
-        out[d] = [np.array(m, bool) for m in variants]
+        by_shape = {}
+        for m in variants:
+            a = np.array(m, bool)
+            by_shape.setdefault(a.shape, []).append(a)
+        out[d] = {k: np.array(v2) for k, v2 in by_shape.items()}
     return out
+
+
+# Accept a glyph only when it is this close to a known one, and this far
+# clear of the runner-up.  Both are needed and both are loose on purpose: the
+# point is not to squeeze the last read out of the reader but to be certain
+# about the ones it does return, because a wrong digit is a wrong tier and the
+# planner acts on it.  Over 103 labelled crops leave-one-out and 17 live cells
+# checked against the save, this pair returned 117 correct, 0 wrong, 3
+# declined.  Anything it declines falls through to the tier templates.
+_DIGIT_SCORE = 0.88
+_DIGIT_MARGIN = 0.05
 
 
 def read_tier_digits(frame, slot, digits, scale=1.0):
     """
-    Tier by DIGIT matching at native scale, or None.
+    Tier by DIGIT matching, or None if not certain.
 
-    Exact matching only: at native resolution a correct glyph is byte-identical
-    to its template, so anything less is a glyph we have not seen.  That makes
-    the failure honest -- it returns None for an unknown digit rather than the
-    nearest lookalike, which is the whole problem the tier-template system had.
+    This is what makes the reader work on a tier nobody has labelled.  A tier
+    template only knows the tiers someone has saved a crop of, so every new top
+    tier used to go blind at the moment it was created -- and not merely
+    unreadable: an unlabelled 52 read as EMPTY, and the planner treated an
+    occupied cell as free space to drag into.  Digits generalise, so 53 and 61
+    read themselves, and so do the low tiers that no high-level player's board
+    ever shows.
+
+    Returns None rather than a guess.  The caller falls back to the templates.
     """
     if not digits:
         return None
@@ -377,46 +483,22 @@ def read_tier_digits(frame, slot, digits, scale=1.0):
         return None
     txt = ""
     for g in gs:
-        hit = None
-        for d, variants in digits.items():
-            for m in variants:
-                if m.shape == g.shape and (m == g).all():
-                    hit = d
-                    break
-            if hit:
-                break
-        if hit is None:
+        scores = {d: _score_glyph(g, by_shape)
+                  for d, by_shape in digits.items()}
+        if not scores:
             return None
-        txt += hit
+        ranked = sorted(((sc, d) for d, sc in scores.items()), reverse=True)
+        best_score, best = ranked[0]
+        runner = ranked[1][0] if len(ranked) > 1 else 0.0
+        if best_score < _DIGIT_SCORE or best_score - runner < _DIGIT_MARGIN:
+            return None
+        txt += best
     try:
-        return int(txt)
+        n = int(txt)
     except ValueError:
         return None
+    # A tier outside what the game can produce means the glyphs were read out
+    # of something that is not a number.
+    return n if 1 <= n <= 70 else None
 
 
-def harvest_digits(frame, board, scale=1.0, path=DIGITS_FILE):
-    """
-    Add any new digit variants seen on a board whose tiers are already known.
-
-    Called after a successful whole-number read, so the digit set fills itself
-    in as new tiers appear -- 0 and 1 only show up once a tier containing them
-    is on the board.  Returns how many variants were added.
-    """
-    digits = load_digit_masks(path)
-    added = 0
-    for slot, v in enumerate(board):
-        if v < 0:
-            continue
-        label = str(v + 1)
-        gs = split_digits(digit_region(frame, slot, scale))
-        if len(gs) != len(label):
-            continue
-        for ch, g in zip(label, gs):
-            have = digits.setdefault(ch, [])
-            if not any(m.shape == g.shape and (m == g).all() for m in have):
-                have.append(g)
-                added += 1
-    if added:
-        json.dump({d: [m.astype(int).tolist() for m in ms]
-                   for d, ms in digits.items()}, open(path, "w"))
-    return added
