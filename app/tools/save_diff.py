@@ -41,10 +41,20 @@ def snapshot():
     text = S._newest_text()
     if not text:
         return None
+    # The format writes y<len>:<name>, and <len> is the name's exact length.
+    # Use it.  Matching the name with a character class instead is ambiguous --
+    # the array markers that follow are letters too, so a greedy match read
+    # "Summonaa" as the key and the real Summon array was never captured.
     out = {}
-    for key in sorted(set(re.findall(r"y\d+:([A-Za-z_][A-Za-z0-9_]{0,20})a", text))):
-        if len(key) < 3:
+    keys = set()
+    for m in re.finditer(r"y(\d+):", text):
+        n = int(m.group(1))
+        if not 3 <= n <= 24:
             continue
+        name = text[m.end():m.end() + n]
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+            keys.add(name)
+    for key in sorted(keys):
         try:
             v = S.values(key, text, window=30000)
         except Exception:

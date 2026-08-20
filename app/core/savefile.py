@@ -178,6 +178,49 @@ def summoning_cost_reset_seconds(text=None):
     return float(shop) + DAY_S * float(days)
 
 
+# Which entry of Summon[0] is the familiar's level, and how high it goes.
+#
+# Found by watching rather than by guessing: the whole save was snapshotted,
+# one familiar level was bought in-game, and the save snapshotted again.
+# Summon[0][2] went 0 -> 1 and nothing else in that array moved -- which also
+# matches the game showing "Familiar Lv.0/25" beforehand.
+#
+# One observation, so treat it as strong rather than certain.  It is used only
+# to SKIP a task, and the cost of being wrong is a wasted trip, not a wrong
+# action: anything acting on this should still read the level off the screen
+# once it has arrived.
+FAMILIAR_INDEX = 2
+FAMILIAR_MAX = 25
+
+
+def summoning_familiar_level(text=None):
+    """The familiar's level out of FAMILIAR_MAX, or None if unreadable."""
+    summon = values("Summon", text)
+    if not summon or not summon[0] or len(summon[0]) <= FAMILIAR_INDEX:
+        return None
+    lv = summon[0][FAMILIAR_INDEX]
+    return lv if isinstance(lv, (int, float)) else None
+
+
+def summoning_familiar_skip_reason(text=None):
+    """
+    Why the familiar task would do nothing, or None if it is worth running.
+
+    Both halves of the question, answered before anyone travels: there is no
+    point going if the familiar is already maxed, and none if the costs have
+    not reset yet.  Unreadable answers "worth running" -- a wasted trip is a
+    better failure than silently never running a task the user asked for.
+    """
+    text = _newest_text() if text is None else text
+    lv = summoning_familiar_level(text)
+    if lv is not None and lv >= FAMILIAR_MAX:
+        return f"familiar is already {int(lv)}/{FAMILIAR_MAX}"
+    left = summoning_cost_reset_seconds(text)
+    if left is not None and left > 0:
+        return f"costs reset in {describe(left)}"
+    return None
+
+
 def describe(seconds):
     """'2d 1h 3m' for a countdown, for logs and the UI."""
     if seconds is None:
