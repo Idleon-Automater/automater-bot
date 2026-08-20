@@ -336,17 +336,24 @@ _DNY0, _DNY1 = 32, 42
 # The number is right-aligned in the corner and the game draws it at a fixed
 # size, so the glyphs land in the same columns every time: measured over 103
 # labelled crops, the left glyph occupies columns 0-7 and the right one 9-16,
-# with the gap closing to nothing on about a quarter of them.  Cutting at a
-# fixed column therefore beats splitting on blank columns, which is what the
-# old reader did -- when the two glyphs touched it saw one run 16 wide and gave
-# up, and that was 25 of those 103 crops.
+# with the gap closing to nothing on about a quarter of them.  Cutting at fixed
+# columns therefore beats splitting on blank columns, which is what the old
+# reader did -- when the two glyphs touched it saw one run 16 wide and gave up,
+# and that was 25 of those 103 crops.
 #
-# WIDE is 17 rather than 16 deliberately.  At 16 the right glyph lost its last
-# column on some cells, which cost about a tenth of the match score and pushed
-# three of seventeen live cells below threshold while still ranking the correct
-# digit first.
-_DIGIT_SPLIT = 8
-_DIGIT_WIDE = 17
+# BOTH SLOTS ARE THE SAME WIDTH, AND THAT MATTERS MORE THAN IT LOOKS
+# ------------------------------------------------------------------
+# The first version cut at 0-8 and 8-17, which made the right slot a column
+# wider than the left.  A glyph can then only ever match a variant learned in
+# the SAME slot, and the library is built from tiers 25-52, where the only
+# tens digits are 2, 3, 4 and 5.  So the left slot had never seen a 1 -- and
+# every tier from 10 to 19 was unreadable for want of a digit the library knew
+# perfectly well in the other position.  Measured on a board of tiers 1-28:
+# 27 of 45 cells read.  Cutting both slots 8 wide, so the ink sits at the same
+# offset in each and variants are interchangeable, took it to 38 with no new
+# data at all.
+_DIGIT_L0, _DIGIT_L1 = 0, 8
+_DIGIT_R0, _DIGIT_R1 = 9, 17
 
 # A left slot with less ink than this is empty, not a digit: single-digit tiers
 # put nothing there.  A real glyph carries 15-25 pixels, so 4 is far below
@@ -398,8 +405,8 @@ def split_digits(mask):
     """
     if mask is None or not mask.any():
         return []
-    left = mask[:, 0:_DIGIT_SPLIT]
-    right = mask[:, _DIGIT_SPLIT:_DIGIT_WIDE]
+    left = mask[:, _DIGIT_L0:_DIGIT_L1]
+    right = mask[:, _DIGIT_R0:_DIGIT_R1]
     if left.sum() < _MIN_INK:
         return [right]
     return [left, right]
@@ -422,10 +429,17 @@ def _score_glyph(g, by_shape):
     if stack is None:
         return 0.0
     best = 0.0
-    for dy in (-1, 0, 1):
-        for dx in (-1, 0, 1):
-            shifted = np.roll(np.roll(g, dy, axis=0), dx, axis=1)
-            best = max(best, float((stack == shifted).mean(axis=(1, 2)).max()))
+    # No offset first, and stop the moment something matches exactly.  The
+    # glyph usually IS drawn where it was learned, so most calls end on the
+    # first comparison; without this the library growing made the board read
+    # nearly three times slower for no better answer.
+    for dy, dx in ((0, 0), (-1, 0), (1, 0), (0, -1), (0, 1),
+                   (-1, -1), (-1, 1), (1, -1), (1, 1)):
+        shifted = g if (dy or dx) == 0 else np.roll(np.roll(g, dy, 0), dx, 1)
+        score = float((stack == shifted).mean(axis=(1, 2)).max())
+        if score >= 1.0:
+            return score
+        best = max(best, score)
     return best
 
 
@@ -461,6 +475,24 @@ def load_digit_masks(path=DIGITS_FILE):
 _DIGIT_SCORE = 0.88
 _DIGIT_MARGIN = 0.05
 
+# Below this, the left slot holds no digit at all and the tier is a single one.
+# Set between the two populations measured on a board of tiers 1-52: sprite
+# bleed reached 0.700, the worst genuine digit was 1.000.
+_NOT_A_DIGIT = 0.80
+
+
+def _classify_glyph(g, digits):
+    """(digit, best score) for one glyph.  Digit is None when it is not sure."""
+    scores = {d: _score_glyph(g, by_shape) for d, by_shape in digits.items()}
+    if not scores:
+        return None, 0.0
+    ranked = sorted(((sc, d) for d, sc in scores.items()), reverse=True)
+    best_score, best = ranked[0]
+    runner = ranked[1][0] if len(ranked) > 1 else 0.0
+    if best_score < _DIGIT_SCORE or best_score - runner < _DIGIT_MARGIN:
+        return None, best_score
+    return best, best_score
+
 
 def read_tier_digits(frame, slot, digits, scale=1.0):
     """
@@ -471,28 +503,48 @@ def read_tier_digits(frame, slot, digits, scale=1.0):
     tier used to go blind at the moment it was created -- and not merely
     unreadable: an unlabelled 52 read as EMPTY, and the planner treated an
     occupied cell as free space to drag into.  Digits generalise, so 53 and 61
-    read themselves, and so do the low tiers that no high-level player's board
-    ever shows.
+    read themselves, and so do the low tiers no developed board ever shows.
 
     Returns None rather than a guess.  The caller falls back to the templates.
     """
     if not digits:
         return None
-    gs = split_digits(digit_region(frame, slot, scale))
-    if not gs or len(gs) > 2:
+    mask = digit_region(frame, slot, scale)
+    if mask is None or not mask.any():
         return None
-    txt = ""
-    for g in gs:
-        scores = {d: _score_glyph(g, by_shape)
-                  for d, by_shape in digits.items()}
-        if not scores:
+    left = mask[:, _DIGIT_L0:_DIGIT_L1]
+    right = mask[:, _DIGIT_R0:_DIGIT_R1]
+
+    units, _ = _classify_glyph(right, digits)
+    if units is None:
+        return None
+
+    # HOW A ONE-DIGIT TIER IS TOLD FROM A TWO-DIGIT ONE
+    # -------------------------------------------------
+    # Not by how much ink is in the left slot.  That was the first rule and it
+    # is wrong: the sushi sprite bleeds into the corner, and on tiers 6 and 8
+    # it put 37 and 30 lit pixels there -- as much as a real digit carries.
+    #
+    # By whether the left slot MATCHES a digit instead.  Measured across a
+    # board holding every tier from 1 to 52: all 59 genuine tens digits scored
+    # 1.000, and the three cells where a sprite bled into the slot scored 0.688
+    # to 0.700.  Nothing landed between, so the question is not close.
+    #
+    # The middle ground still declines.  A left slot that scores like neither
+    # -- too poor to be a digit, too good to dismiss -- could be a tens digit
+    # this library has not seen, and reading it as a one-digit tier would turn
+    # 45 into 5 and hand the planner a board that is wrong rather than short.
+    if left.sum() < _MIN_INK:
+        txt = units
+    else:
+        tens, tens_score = _classify_glyph(left, digits)
+        if tens is not None:
+            txt = tens + units
+        elif tens_score < _NOT_A_DIGIT:
+            txt = units
+        else:
             return None
-        ranked = sorted(((sc, d) for d, sc in scores.items()), reverse=True)
-        best_score, best = ranked[0]
-        runner = ranked[1][0] if len(ranked) > 1 else 0.0
-        if best_score < _DIGIT_SCORE or best_score - runner < _DIGIT_MARGIN:
-            return None
-        txt += best
+
     try:
         n = int(txt)
     except ValueError:
