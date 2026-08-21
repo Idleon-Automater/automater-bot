@@ -42,7 +42,10 @@ SEARCH_PAD = 40
 UPGRADE_XY = (409, 147)
 
 # The level reads "Lv.1/25" at the panel's top right.
-LEVEL_REGION = (382, 112, 440, 132)      # x0, y0, x1, y1
+# Wide enough to hold the whole string with room either side.  The text runs
+# x 376..442 and ends 2 px short of a tighter box that was tried first, which
+# left no space for the comparison window in looks_maxed() to sit in.
+LEVEL_REGION = (374, 110, 448, 134)      # x0, y0, x1, y1
 
 MAX_LEVEL = 25
 
@@ -61,10 +64,13 @@ MAX_LEVEL = 25
 PILLARS_XY = (225, 270)          # where pillars.png sits once you have arrived
 ENTRANCE_XY = (210, 285)         # click here to open the summoning screen
 
-# Empty ground at the far left of the landing view.  Clicking it walks left
+# Empty grass at the far left of the landing view.  Clicking it walks left
 # without opening anything; the shop, the portal and the pagoda all do open
-# something, which is why this is a named point and not "somewhere on the left".
-WALK_LEFT_XY = (80, 355)
+# something, which is why this is a named point and not "somewhere on the
+# left".  Measured off w6town.png: a storage chest sits at x 120..190, so the
+# point stays well left of it, and low enough to be on grass rather than on
+# the decorative pets that fill x 0..95 up to y 375.
+WALK_LEFT_XY = (90, 380)
 
 
 def at_sanctuary(frame, scale=1.0, min_score=0.75):
@@ -127,3 +133,85 @@ def find_upgrade_button(frame, scale=1.0, min_score=0.80):
 def panel_is_open(frame, scale=1.0):
     """Whether the familiar's panel is showing."""
     return find_upgrade_button(frame, scale) is not None
+
+
+# WATCHING THE LEVEL WHILE THE BUTTON IS HELD
+# -------------------------------------------
+# The button is held rather than clicked because only about one press in five
+# counts, so reaching 25 takes anywhere from a couple of seconds to twenty and
+# clicking once per attempt would be far slower than the game allows.
+#
+# Held means something has to say when to let go, and the level itself says
+# it.  Measured on this machine: a region of the screen can be re-read 60
+# times a second -- 16.67 ms, exactly one display frame, and the same whether
+# the region is 58x20 or the whole 960x540, because the capture is locked to
+# the refresh and not to the number of pixels.  So the level can be watched
+# live and the button released on the frame it reaches its maximum.
+#
+# The number is NOT read.  The glyphs touch -- "Lv.1/25" segments into a
+# single run 66 px wide, not seven -- so splitting them by blank columns does
+# not work here the way it does for the sushi tiers.  Two things are used
+# instead, and neither needs to know what the digits are:
+#
+#   * the text CHANGING means a level was gained.  Counting those from a
+#     level read out of the save covers the whole range with no reading at
+#     all.
+#   * the text is right-aligned with a constant "/25", so at maximum the
+#     glyphs left of the slash are the same glyphs as those right of it.
+#     looks_maxed() is that comparison.
+#
+# The second is a cross-check on the first, not a replacement: it is written
+# from a capture at Lv.1/25 and has never been seen against a real 25/25
+# panel, so a task must not depend on it alone.
+
+
+def level_mask(frame, scale=1.0):
+    """
+    Binary mask of the "Lv.n/25" text, or None.
+
+    Used for spotting CHANGE rather than for reading, so what matters is that
+    it is stable frame to frame while the number holds still.
+    """
+    x0, y0, x1, y1 = [int(round(v * scale)) for v in LEVEL_REGION]
+    r = frame[max(0, y0):y1, max(0, x0):x1]
+    if r.size == 0:
+        return None
+    return cv2.cvtColor(r, cv2.COLOR_BGR2HSV)[:, :, 2] > 170
+
+
+def level_changed(before, after, min_pixels=6):
+    """
+    Whether the level text differs enough to be a new number.
+
+    A threshold rather than any-difference: one or two pixels flipping is
+    antialiasing on a redraw, and counting those as level-ups would end the
+    hold early with the familiar half bought.
+    """
+    if before is None or after is None or before.shape != after.shape:
+        return False
+    return int(np.count_nonzero(before != after)) >= min_pixels
+
+
+def looks_maxed(frame, scale=1.0, tolerance=0.94):
+    """
+    Whether the level text reads n/n, i.e. the familiar is maxed.
+
+    UNVERIFIED against a real maxed panel -- written from a capture at Lv.1/25,
+    where it correctly says False.  Treat as a cross-check.
+    """
+    m = level_mask(frame, scale)
+    if m is None or not m.any():
+        return None
+    tpl = _load("slash.png")
+    score, xy = _match(frame, tpl, scale, LEVEL_REGION)
+    if score < 0.7 or xy is None:
+        return None
+    x0 = int(round(LEVEL_REGION[0] * scale))
+    sx = int(round(xy[0] * scale)) - x0
+    half = tpl.shape[1]
+    w = 20                                # width of the two-digit "25"
+    left = m[:, max(0, sx - half // 2 - w):max(0, sx - half // 2)]
+    right = m[:, sx + half // 2:sx + half // 2 + w]
+    if left.shape != right.shape or left.size == 0:
+        return None
+    return float(np.count_nonzero(left == right)) / left.size >= tolerance
