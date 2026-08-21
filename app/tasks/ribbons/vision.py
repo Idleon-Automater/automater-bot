@@ -83,10 +83,21 @@ EMPTY_STD = 26.0
 # MENU, three curls of steam and a bowl, filling about a third of a pale
 # board.  Measured: the sign reads 0.29 and 0.32 dark, and every other pale
 # blob across eight captures reads 0.18 or less.
-SIGN_AREA = (900, 2600)          # pixels of pale interior
+# Sized to survive being PARTLY COVERED.  Other players stand in this town and
+# one walked in front of the board, which broke the pale interior into pieces
+# too small to qualify -- the run reported dark=0.00 gold=0.00, meaning no
+# candidate at all, and gave up on a board that was still perfectly clickable.
+#
+# Simulated by pasting a real player sprite over the sign at four offsets: the
+# surviving fragment reads 0.21 to 0.25 dark, against 0.16 to 0.17 for the
+# player themselves. So the floor comes down to 0.20, which is a thinner
+# margin than the unoccluded 0.29 allowed and is worth it -- clicking a player
+# by mistake opens nothing and costs a retry, while failing to find the sign
+# costs the whole task.
+SIGN_AREA = (550, 2600)          # pixels of pale interior
 SIGN_MAX_CY = 220                # hung high; anything lower is furniture
 SIGN_GOLD_MIN = 0.08             # fraction of the surrounding ring that is gold
-SIGN_DARK_MIN = 0.24             # fraction of the board that is lettering
+SIGN_DARK_MIN = 0.20             # fraction of the board that is lettering
 _SIGN_RING = 8                   # how far outside the blob to look for gold
 _SIGN_DARK_V = 110               # below this counts as lettering
 

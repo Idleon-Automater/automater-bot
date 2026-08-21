@@ -47,6 +47,17 @@ NAV = os.path.join(_HERE, "nav")
 OPEN_TRIES = 16
 OPEN_POLL = 0.3
 
+# How long to keep looking for the signboard before giving up.
+#
+# It is a busy town and other players walk through it -- one stood in front of
+# the board and the run failed on the spot, on a board that was still there
+# and still clickable.  Players do not stand still, so the cheapest fix is to
+# keep looking for a few seconds rather than to decide on one frame.  This
+# costs nothing when the sign is visible, which is the usual case: the very
+# first look returns it.
+SIGN_LOOK_S = 8.0
+SIGN_LOOK_POLL = 0.4
+
 # After a drag, WAIT FOR THE SHELF TO CHANGE rather than for a fixed delay.
 #
 # A single check 0.7 s after the drag is what the first version did, and it
@@ -121,6 +132,24 @@ class RibbonsTask(Task):
         except RuntimeError as e:
             raise Blocked(str(e))
 
+    def _look_for_sign(self, cam, stopping, seconds=None):
+        """
+        Where the signboard is, watching for a few seconds.  None if never seen.
+
+        Watching rather than glancing, because the thing most likely to hide it
+        is a player walking past, and they walk on.
+        """
+        seconds = SIGN_LOOK_S if seconds is None else seconds
+        deadline = time.perf_counter() + seconds
+        while True:
+            frame, _ = cam.grab()
+            spot = V.find_menu_sign(frame)
+            if spot is not None:
+                return spot
+            if stopping() or time.perf_counter() >= deadline:
+                return None
+            time.sleep(SIGN_LOOK_POLL)
+
     def _open_cooking(self, cam, rect, clicker, stopping):
         """Travel if needed, then open the cooking screen.  Yields Progress."""
         from core.navigate import Navigator
@@ -130,6 +159,8 @@ class RibbonsTask(Task):
             return                              # already looking at the shelf
 
         nav = Navigator(rect, clicker)
+        # One glance before deciding to travel -- if the sign is right there
+        # the journey is pure waste.
         if V.find_menu_sign(frame) is None:
             yield Progress("travelling to World 4 town")
             nav.open_map()
@@ -139,7 +170,7 @@ class RibbonsTask(Task):
                 return
             frame, _ = cam.grab()
 
-        sign = V.find_menu_sign(frame)
+        sign = self._look_for_sign(cam, stopping)
         if sign is None:
             # Teleporting to the world you are ALREADY in does nothing, so a
             # run that starts in World 4 but out of sight of the sign travels,
@@ -150,14 +181,14 @@ class RibbonsTask(Task):
             nav.bounce_via(4)
             if stopping():
                 return
-            frame, _ = cam.grab()
-            sign = V.find_menu_sign(frame)
+            sign = self._look_for_sign(cam, stopping)
 
         if sign is None:
             raise Blocked(
                 f"could not find the cooking MENU signboard in World 4 town "
-                f"-- best candidate dark={V.menu_sign_score(frame)[0]:.2f} "
-                f"gold={V.menu_sign_score(frame)[1]:.2f} (needs "
+                f"after watching for {SIGN_LOOK_S:.0f}s -- best candidate "
+                f"dark={V.menu_sign_score(cam.grab()[0])[0]:.2f} "
+                f"gold={V.menu_sign_score(cam.grab()[0])[1]:.2f} (needs "
                 f"{V.SIGN_DARK_MIN} and {V.SIGN_GOLD_MIN})")
 
         yield Progress(f"opening the cooking screen at {sign}")
