@@ -69,6 +69,15 @@ MERGE_POLL = 0.2
 SETTLE_WAIT_S = 3.0
 SETTLE_POLL = 0.15
 
+# Where to leave the pointer while the shelf is read.
+#
+# A drag ends with the mouse sitting on the destination slot, and this game
+# draws something when a ribbon is hovered -- which changes those pixels, and
+# changed pixels are a different signature, so a ribbon under the cursor stops
+# matching its own twin.  Parked far to the right of the shelf: the panel ends
+# at x=195, and anything the game draws near the pointer there cannot reach it.
+PARK_XY = (860, 440)
+
 # A ceiling on merges in one visit.  Not expected to be reached -- 28 slots
 # cannot yield more than 27 merges even if every one cascaded -- and it exists
 # so a misread that keeps finding the same phantom pair cannot loop forever.
@@ -214,16 +223,27 @@ class RibbonsTask(Task):
                 break
             pairs = V.find_pairs(shelf)
             if not pairs:
+                if self._merged and V.occupied(shelf) > 1:
+                    # Worth saying out loud.  Stopping with ribbons still on
+                    # the shelf is expected once nothing matches, but after a
+                    # merge it is also what a misread looks like, and the two
+                    # were indistinguishable in the logs for three runs.
+                    yield Progress(f"no more pairs among "
+                                   f"{V.occupied(shelf)} ribbon(s)")
                 break
             src, dst = pairs[0]
             sx, sy = V.slot_xy(src)
             dx, dy = V.slot_xy(dst)
-            yield Progress(f"merging slot {src} onto slot {dst}")
+            yield Progress(f"merging slot {src} onto slot {dst} "
+                           f"({len(pairs)} pair(s) available)")
             _input.drag(clicker,
                         rect["left"] + cam.to_screen(sx),
                         rect["top"] + cam.to_screen(sy),
                         rect["left"] + cam.to_screen(dx),
                         rect["top"] + cam.to_screen(dy))
+            # Get the pointer off the shelf before looking at it.
+            clicker.move(rect["left"] + cam.to_screen(PARK_XY[0]),
+                         rect["top"] + cam.to_screen(PARK_XY[1]))
             time.sleep(MERGE_SETTLE)
 
             before = V.occupied(shelf)
