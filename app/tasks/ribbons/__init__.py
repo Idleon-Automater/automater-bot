@@ -58,6 +58,15 @@ OPEN_POLL = 0.3
 SIGN_LOOK_S = 8.0
 SIGN_LOOK_POLL = 0.4
 
+# Where the signboard is when you have just teleported into the town.
+#
+# Measured from a capture taken immediately after the town teleport, without
+# moving: the sign sat at (526, 92).  Used only as a fallback for when it
+# cannot be seen -- a player standing in front of it does not stop it being
+# clickable, and the player has confirmed there is nothing beside it that a
+# stray click would trigger.
+LANDING_SIGN_XY = (526, 92)
+
 # After a drag, WAIT FOR THE SHELF TO CHANGE rather than for a fixed delay.
 #
 # A single check 0.7 s after the drag is what the first version did, and it
@@ -150,6 +159,20 @@ class RibbonsTask(Task):
                 return None
             time.sleep(SIGN_LOOK_POLL)
 
+    def _try_open(self, cam, rect, clicker, stopping, spot):
+        """Click `spot` and wait for the cooking screen.  True if it opened."""
+        clicker.click_at(rect["left"] + cam.to_screen(spot[0]),
+                         rect["top"] + cam.to_screen(spot[1]),
+                         time.perf_counter() + 0.25)
+        for _ in range(OPEN_TRIES):
+            frame, _ = cam.grab()
+            if V.on_cooking_screen(frame):
+                return True
+            if stopping():
+                return False
+            time.sleep(OPEN_POLL)
+        return False
+
     def _open_cooking(self, cam, rect, clicker, stopping):
         """Travel if needed, then open the cooking screen.  Yields Progress."""
         from core.navigate import Navigator
@@ -159,53 +182,62 @@ class RibbonsTask(Task):
             return                              # already looking at the shelf
 
         nav = Navigator(rect, clicker)
+        landed = False
         # One glance before deciding to travel -- if the sign is right there
         # the journey is pure waste.
         if V.find_menu_sign(frame) is None:
             yield Progress("travelling to World 4 town")
             nav.open_map()
             nav.go_to_town(4)
+            landed = True
             yield Progress("arrived in town")
             if stopping():
                 return
-            frame, _ = cam.grab()
 
-        sign = self._look_for_sign(cam, stopping)
-        if sign is None:
-            # Teleporting to the world you are ALREADY in does nothing, so a
-            # run that starts in World 4 but out of sight of the sign travels,
-            # moves nowhere, and looks at the same view again.  Reported live.
-            # Bouncing through another world makes the return a real map
-            # change, which puts the character back at the town's landing spot.
-            yield Progress("still no signboard -- hopping out and back")
-            nav.bounce_via(4)
-            if stopping():
-                return
+        for attempt in (1, 2):
             sign = self._look_for_sign(cam, stopping)
-
-        if sign is None:
-            raise Blocked(
-                f"could not find the cooking MENU signboard in World 4 town "
-                f"after watching for {SIGN_LOOK_S:.0f}s -- best candidate "
-                f"dark={V.menu_sign_score(cam.grab()[0])[0]:.2f} "
-                f"gold={V.menu_sign_score(cam.grab()[0])[1]:.2f} (needs "
-                f"{V.SIGN_DARK_MIN} and {V.SIGN_GOLD_MIN})")
-
-        yield Progress(f"opening the cooking screen at {sign}")
-        clicker.click_at(rect["left"] + cam.to_screen(sign[0]),
-                         rect["top"] + cam.to_screen(sign[1]),
-                         time.perf_counter() + 0.25)
-        for _ in range(OPEN_TRIES):
-            frame, _ = cam.grab()
-            if V.on_cooking_screen(frame):
-                return
             if stopping():
                 return
-            time.sleep(OPEN_POLL)
+            if sign is not None:
+                yield Progress(f"opening the cooking screen at {sign}")
+                if self._try_open(cam, rect, clicker, stopping, sign):
+                    return
+
+            # CLICK WHERE IT HAS TO BE.
+            #
+            # Not finding the sign does not mean it is not there: the last
+            # three failures were all a player standing in front of it, and
+            # hopping out and back cannot move a player.  Since the teleport
+            # lands in a fixed spot, the board is at a known place, and there
+            # is nothing next to it that a stray click could set off -- so
+            # after looking properly, just click it.
+            #
+            # Safe because it is VERIFIED rather than assumed: if the cooking
+            # screen does not open, nothing has happened and the run says so.
+            if landed:
+                yield Progress(f"cannot see the signboard -- clicking where it "
+                               f"has to be, {LANDING_SIGN_XY}")
+                if self._try_open(cam, rect, clicker, stopping,
+                                  LANDING_SIGN_XY):
+                    return
+            if stopping() or attempt == 2:
+                break
+
+            # Second time round, force a real map change first.  Teleporting
+            # to the world you are already in does nothing, so a run that
+            # began in World 4 has not actually moved yet and is looking at
+            # the same view it started with.
+            yield Progress("still not open -- hopping out and back")
+            nav.bounce_via(4)
+            landed = True
+
+        frame, _ = cam.grab()
+        dark, gold = V.menu_sign_score(frame)
         raise Blocked(
-            f"the cooking screen did not open after clicking {sign} -- "
-            f"RIBBON SHELF heading best match "
-            f"{V.shelf_title_score(frame):.2f}")
+            f"could not open the cooking screen -- the signboard was not "
+            f"found (best candidate dark={dark:.2f} gold={gold:.2f}, needs "
+            f"{V.SIGN_DARK_MIN} and {V.SIGN_GOLD_MIN}) and clicking "
+            f"{LANDING_SIGN_XY} did not open it either")
 
     def _settled_shelf(self, cam, fallback):
         """
