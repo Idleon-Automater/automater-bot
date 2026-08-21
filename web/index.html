@@ -43,7 +43,11 @@
      the page's accent and are never used decoratively. */
                 --w1: #3f8f4f;
                 --w3: #2f6fb5;
+                --w4: #8a3fa8;
+                --w6: #2f8f7a;
                 --w7: #3f9fc0;
+                /* worlds.UNKNOWN -- a task that lives in no one world. */
+                --w0: #8a8f96;
 
                 --caution: #8a5f5a; /* theme.RUN_STOP_BG: warm, not alarm-red */
 
@@ -68,7 +72,10 @@
                     /* Lifted so they still read as themselves on a dark ground. */
                     --w1: #5fb872;
                     --w3: #5b9fe0;
+                    --w4: #b56fd0;
+                    --w6: #55b9a3;
                     --w7: #63c4e2;
+                    --w0: #a8adb5;
 
                     --caution: #c89189;
                 }
@@ -506,20 +513,20 @@
                 <div class="get">
                     <a
                         class="btn"
-                        href="https://pub-6ca3288dbdb14574a96b21dac0c7fac1.r2.dev/releases/1.0.4/IdleonAutomator.exe"
+                        href="https://pub-6ca3288dbdb14574a96b21dac0c7fac1.r2.dev/releases/1.1.0/IdleonAutomator.exe"
                     >
                         Download for Windows
-                        <span class="size mono">85&nbsp;MB</span>
+                        <span class="size mono">87.5&nbsp;MB</span>
                     </a>
                     <div class="meta">
-                        <strong class="mono">Version 1.0.4</strong><br />
+                        <strong class="mono">Version 1.1.0</strong><br />
                         No installer. Run it where you put it.
                     </div>
                 </div>
 
                 <p class="hash mono">
                     <b>SHA-256</b>
-                    c4a7b6dae0b38c404d249d65072385e7961e634f37ccdb02149c89ca68ac593b
+                    fd26ce1af0d7050bf9b522bc19ef6871315a070f7288a3038ef66d50255980e0
                 </p>
 
                 <div class="shot">
@@ -531,7 +538,15 @@
                             Refinery <span class="where mono">World 3</span>
                         </li>
                         <li style="--dot: var(--w3)">
-                            W3 Equinox <span class="where mono">World 3</span>
+                            Equinox
+                            <span class="where mono">bar 92% &mdash; ready in 3h 56m</span>
+                        </li>
+                        <li style="--dot: var(--w4)">
+                            Ribbons <span class="where mono">World 4</span>
+                        </li>
+                        <li style="--dot: var(--w6); opacity: .45">
+                            Summoning
+                            <span class="where mono">maxed &mdash; resets in 1d 2h</span>
                         </li>
                         <li style="--dot: var(--w7)">
                             Sushi Station
@@ -540,8 +555,9 @@
                         <li style="--dot: var(--w1)">
                             Swishy Hoops <span class="where mono">World 1</span>
                         </li>
-                        <li style="--dot: var(--w1)">
-                            Throwy Darts <span class="where mono">World 1</span>
+                        <li style="--dot: var(--w0)">
+                            Fighting
+                            <span class="where mono">W5 &mdash; Lampar Lake</span>
                         </li>
                     </ul>
                 </div>
@@ -550,8 +566,10 @@
             <section>
                 <h2>What it can run</h2>
                 <p>
-                    Five tasks today. Each one knows how to travel to itself, so
-                    a list can cross the map without you.
+                    Eight tasks today. Each one knows how to travel to itself,
+                    so a list can cross the map without you &mdash; and the ones
+                    that are not due yet fade out and are passed over, so a
+                    weekly task can sit in a daily list all week.
                 </p>
 
                 <div class="tasks">
@@ -566,12 +584,12 @@
                     </div>
                     <div class="task" style="--dot: var(--w3)">
                         <span class="chip">World 3</span>
-                        <h3>W3 Equinox</h3>
+                        <h3>Equinox</h3>
                         <p>
                             Spends a full Equinox bar on the dream you pick.
-                            The bar takes about 41 hours to fill, so most runs
-                            correctly do nothing &mdash; which is the point of
-                            having it in a list.
+                            It works out when the bar will next be full from
+                            your own save, and sits the rest out rather than
+                            spending a teleport to look.
                         </p>
                     </div>
                     <div class="task" style="--dot: var(--w7)">
@@ -598,6 +616,33 @@
                             Reads the wind and the moving platform on every
                             throw, aiming for bullseyes and the nine-in-a-row
                             streak.
+                        </p>
+                    </div>
+                    <div class="task" style="--dot: var(--w6)">
+                        <span class="chip">World 6</span>
+                        <h3>Summoning</h3>
+                        <p>
+                            Buys the familiar out to 25/25, holding the button
+                            and watching the level rather than counting clicks.
+                            Then sleeps until the weekly reset.
+                        </p>
+                    </div>
+                    <div class="task" style="--dot: var(--w4)">
+                        <span class="chip">World 4</span>
+                        <h3>Ribbons</h3>
+                        <p>
+                            Merges every duplicate on the cooking shelf, one at
+                            a time, re-reading after each &mdash; because a
+                            merge can make a pair that was not there before.
+                        </p>
+                    </div>
+                    <div class="task" style="--dot: var(--w0)">
+                        <span class="chip">Anywhere</span>
+                        <h3>Fighting</h3>
+                        <p>
+                            Travels to any map in the game and fights there for
+                            as long as you set. The map list is read from your
+                            save, so it is every map you can reach.
                         </p>
                     </div>
                 </div>

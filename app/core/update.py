@@ -32,7 +32,7 @@ import re
 import urllib.request
 
 # This build.  Compared against the manifest, and shown in the window.
-VERSION = "1.0.4"
+VERSION = "1.1.0"
 
 BUCKET = "https://pub-6ca3288dbdb14574a96b21dac0c7fac1.r2.dev"
 MANIFEST_URL = BUCKET + "/version.json"

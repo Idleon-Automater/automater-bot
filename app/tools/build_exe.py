@@ -111,9 +111,36 @@ def build():
     ]
     # Absolute sources: --add-data resolves relative paths against the spec
     # directory, not the working directory, so bare names silently miss.
+    #
+    # Grouped by (source folder, destination) rather than one argument per
+    # file.  Windows caps a command line at 32767 characters and each file
+    # costs about 150 of them, so listing them individually stopped working
+    # the moment the task count grew -- 264 files, and the build died with
+    # "The filename or extension is too long", which reads like a path problem
+    # and is not one.  --add-data takes a directory and copies its contents,
+    # so one argument now covers a whole folder.
+    # ...but only for folders holding NOTHING BUT data.  --add-data on a
+    # folder copies everything in it, and two of ours sit beside their own
+    # source: tasks/minigames and tasks/sushi.  Bundling those .py files as
+    # DATA would drop readable copies next to the compiled modules at the
+    # bundle root, where they can shadow the real ones -- a packaging change
+    # that breaks nothing at build time and everything on launch.
+    grouped, singles = {}, []
     for full, dest in datas:
+        folder = os.path.dirname(full)
+        has_py = any(f.endswith(".py") for f in os.listdir(folder))
+        if has_py:
+            singles.append((full, dest))
+        else:
+            grouped[(folder, dest)] = True
+    for folder, dest in sorted(grouped):
+        args += ["--add-data", f"{folder}{os.pathsep}{dest}"]
+    for full, dest in singles:
         args += ["--add-data", f"{full}{os.pathsep}{dest}"]
-    print(f"[Build] bundling {len(datas)} data file(s)")
+    used = sum(len(a) + 1 for a in args)
+    print(f"[Build] {len(datas)} data file(s): {len(grouped)} folder(s) "
+          f"+ {len(singles)} single(s); command line {used} chars of 32767")
+
     # PySide6 ships every Qt module, and PyInstaller bundles what it is not
     # told to leave out.  This program uses widgets and nothing else -- no web
     # view, no 3D, no QML, no multimedia -- and those are the large ones.  The
