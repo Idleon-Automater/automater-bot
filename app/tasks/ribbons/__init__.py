@@ -102,9 +102,9 @@ class RibbonsTask(Task):
         if V.on_cooking_screen(frame):
             return                              # already looking at the shelf
 
+        nav = Navigator(rect, clicker)
         if V.find_menu_sign(frame) is None:
             yield Progress("travelling to World 4 town")
-            nav = Navigator(rect, clicker)
             nav.open_map()
             nav.go_to_town(4)
             yield Progress("arrived in town")
@@ -114,9 +114,23 @@ class RibbonsTask(Task):
 
         sign = V.find_menu_sign(frame)
         if sign is None:
+            # Teleporting to the world you are ALREADY in does nothing, so a
+            # run that starts in World 4 but out of sight of the sign travels,
+            # moves nowhere, and looks at the same view again.  Reported live.
+            # Bouncing through another world makes the return a real map
+            # change, which puts the character back at the town's landing spot.
+            yield Progress("still no signboard -- hopping out and back")
+            nav.bounce_via(4)
+            if stopping():
+                return
+            frame, _ = cam.grab()
+            sign = V.find_menu_sign(frame)
+
+        if sign is None:
             raise Blocked(
                 f"could not find the cooking MENU signboard in World 4 town "
-                f"-- best match {V.menu_sign_score(frame):.2f}")
+                f"-- best gold-frame score {V.menu_sign_score(frame):.2f} "
+                f"(needs {V.SIGN_GOLD_MIN})")
 
         yield Progress(f"opening the cooking screen at {sign}")
         clicker.click_at(rect["left"] + cam.to_screen(sign[0]),

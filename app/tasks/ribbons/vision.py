@@ -58,10 +58,25 @@ CELL_HALF = 15
 # this found all ten empty slots and no false ones.
 EMPTY_STD = 26.0
 
-# Where to click in World 4 town to open the cooking screen.  The template is
-# the MENU signboard: 1.000 where it belongs, at most 0.242 against the cooking
-# screen, World 6 town and the summoning grid.
-MENU_SIGN = "menu_sign.png"
+# THE MENU SIGNBOARD IS FOUND BY COLOUR, NOT BY TEMPLATE
+# ------------------------------------------------------
+# It SWAYS.  A template cut from it matched 1.000 against the capture it came
+# from and 0.24 against another capture of the same sign a few feet away --
+# which is the score for "not on screen", and is exactly what a live run
+# reported.  Template matching does not survive rotation, and this is the third
+# time an animated thing has been templated in this project (the Equinox mirror
+# glass, the summoning runes, now this).
+#
+# What does not change when it sways: it is a pale board inside a gold frame,
+# hung high on a purple wall.  So look for a pale blob of about the right size,
+# taller than it is wide, in the upper part of the screen, with gold around it.
+# Measured across six captures -- the real sign scores 0.15 and 0.17 for the
+# gold ring, and the two pale things that pass every other test score 0.004 and
+# 0.002.
+SIGN_AREA = (1100, 2400)         # pixels of pale interior
+SIGN_MAX_CY = 220                # hung high; anything lower is furniture
+SIGN_GOLD_MIN = 0.08             # fraction of the surrounding ring that is gold
+_SIGN_RING = 8                   # how far outside the blob to look for gold
 
 # Proof that the cooking screen is open.  The RIBBON SHELF heading: 1.000 on
 # that screen and at most 0.218 against the town, the summoning grid and the
@@ -154,15 +169,44 @@ def _match(frame, tpl, scale=1.0):
                           int(round((loc[1] + tpl.shape[0] // 2) / scale)))
 
 
-def find_menu_sign(frame, scale=1.0, min_score=0.70):
+def _sign_candidates(frame, scale=1.0):
+    """Every pale-in-gold board on screen, best gold ring first."""
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    pale = ((hsv[:, :, 2] > 150) & (hsv[:, :, 1] < 60)).astype(np.uint8)
+    # The HUD along the bottom is full of pale panels and is never the sign.
+    pale[int(420 * scale):, :] = 0
+    n, _lab, stats, cent = cv2.connectedComponentsWithStats(pale, 8)
+    out = []
+    lo, hi = SIGN_AREA[0] * scale * scale, SIGN_AREA[1] * scale * scale
+    for i in range(1, n):
+        x, y, w, h, area = stats[i]
+        if not lo <= area <= hi or h <= w or cent[i][1] > SIGN_MAX_CY * scale:
+            continue
+        m = int(round(_SIGN_RING * scale))
+        ring = hsv[max(0, y - m):y + h + m, max(0, x - m):x + w + m]
+        if ring.size == 0:
+            continue
+        ring = ring.reshape(-1, 3)
+        gold = float(((ring[:, 0] >= 10) & (ring[:, 0] <= 30)
+                      & (ring[:, 1] > 60) & (ring[:, 2] > 120)).mean())
+        out.append((gold, (int(round(cent[i][0] / scale)),
+                           int(round(cent[i][1] / scale)))))
+    out.sort(reverse=True)
+    return out
+
+
+def find_menu_sign(frame, scale=1.0, min_gold=SIGN_GOLD_MIN):
     """Where the cooking MENU signboard is in World 4 town, or None."""
-    score, xy = _match(frame, _load(MENU_SIGN), scale)
-    return xy if score >= min_score else None
+    for gold, xy in _sign_candidates(frame, scale):
+        if gold >= min_gold:
+            return xy
+    return None
 
 
 def menu_sign_score(frame, scale=1.0):
-    """Best score for the signboard -- for logs when it is not found."""
-    return _match(frame, _load(MENU_SIGN), scale)[0]
+    """Best gold-ring fraction found -- for logs when the sign is missed."""
+    cands = _sign_candidates(frame, scale)
+    return cands[0][0] if cands else 0.0
 
 
 def shelf_title_score(frame, scale=1.0):
