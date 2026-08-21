@@ -237,26 +237,21 @@ def level_changed(before, after, min_pixels=6):
     return int(np.count_nonzero(before != after)) >= min_pixels
 
 
-def looks_maxed(frame, scale=1.0, tolerance=0.94):
+def looks_maxed(frame, scale=1.0, min_score=0.80):
     """
-    Whether the level text reads n/n, i.e. the familiar is maxed.
+    Whether the panel is showing MAX LV, i.e. the familiar is bought out.
 
-    UNVERIFIED against a real maxed panel -- written from a capture at Lv.1/25,
-    where it correctly says False.  Treat as a cross-check.
+    At maximum the game does not print "Lv.25/25" -- it replaces the level
+    with the words MAX LV in gold.  This was written twice before that was
+    known: first comparing the glyphs either side of the slash, on the theory
+    that 25/25 would match itself, and it returned None against a real maxed
+    panel because there is no slash there to compare across.  Guessing what a
+    screen says without having seen it is how that happens.
+
+    What it means for the task is better than what was planned.  MAX LV is a
+    distinct, static, two-word template rather than a number that has to be
+    read, so the end of the hold is now something the screen states outright
+    rather than something inferred from counting changes.
     """
-    m = level_mask(frame, scale)
-    if m is None or not m.any():
-        return None
-    tpl = _load("slash.png")
-    score, xy = _match(frame, tpl, scale, LEVEL_REGION)
-    if score < 0.7 or xy is None:
-        return None
-    x0 = int(round(LEVEL_REGION[0] * scale))
-    sx = int(round(xy[0] * scale)) - x0
-    half = tpl.shape[1]
-    w = 20                                # width of the two-digit "25"
-    left = m[:, max(0, sx - half // 2 - w):max(0, sx - half // 2)]
-    right = m[:, sx + half // 2:sx + half // 2 + w]
-    if left.shape != right.shape or left.size == 0:
-        return None
-    return float(np.count_nonzero(left == right)) / left.size >= tolerance
+    score, _ = _match(frame, _load("max_lv.png"), scale, LEVEL_REGION)
+    return score >= min_score

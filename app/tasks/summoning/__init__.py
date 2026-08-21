@@ -299,24 +299,33 @@ class SummoningTask(Task):
         yield Progress(f"holding UPGRADE from level {start} of {V.MAX_LEVEL}")
 
         state = {"level": start, "last": time.perf_counter(),
-                 "mask": V.level_mask(frame)}
+                 "mask": V.level_mask(frame), "maxed": False}
 
         def done():
             f, _ = cam.grab()
-            m = V.level_mask(f)
             now = time.perf_counter()
+            # MAX LV is the primary signal, and it is the screen SAYING so
+            # rather than this code inferring it.  Measured 1.000 against a
+            # real maxed panel and at most 0.213 anywhere else, which is a
+            # wider margin than the level count can offer -- the count depends
+            # on never missing and never double-counting a redraw.
+            if V.looks_maxed(f):
+                state["maxed"] = True
+                state["level"] = V.MAX_LEVEL
+                return True
+            m = V.level_mask(f)
             if V.level_changed(state["mask"], m):
                 state["mask"] = m
                 state["level"] += 1
                 state["last"] = now
+            # Kept as a backstop.  If MAX LV were ever missed -- a redraw, an
+            # overlay -- the count still ends the hold rather than leaving it
+            # pressing until the ninety-second cap.
             if state["level"] >= V.MAX_LEVEL:
                 return True
             if stopping():
                 return True
-            # Nothing for a while means the essence ran out.  looks_maxed() is
-            # deliberately NOT consulted here: it has never been seen against a
-            # real maxed panel, and a false positive would end the hold with
-            # the familiar half bought.
+            # Nothing for a while means the essence ran out.
             return now - state["last"] > IDLE_GIVE_UP_S
 
         held, _ = _input.hold_until(
@@ -329,7 +338,7 @@ class SummoningTask(Task):
         self._gained = reached - start
         yield Progress(f"held for {held:.1f}s, level {start} -> {reached}")
 
-        if reached >= V.MAX_LEVEL:
+        if state["maxed"] or reached >= V.MAX_LEVEL:
             self._summary = (f"W6 Summoning: familiar maxed at "
                              f"{V.MAX_LEVEL}/{V.MAX_LEVEL} "
                              f"(+{self._gained} this run)")
