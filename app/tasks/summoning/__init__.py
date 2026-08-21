@@ -6,8 +6,21 @@ WHAT IT DOES
     1. travel to World 6 town (free -- the town teleport)
     2. walk left to the sanctuary, which the teleport does not land at
     3. click the rune pillars to open the summoning screen
-    4. hover the familiar to bring up its panel
+    4. CLICK the familiar to select it, which brings up its panel
     5. HOLD the UPGRADE button, watching the level, and let go at 25/25
+
+WHY THE COORDINATES ARE TRUSTED HERE AND NOWHERE ELSE
+-----------------------------------------------------
+This screen does not move.  The upgrade grid, the panel and the UPGRADE
+button are drawn at the same place every time -- the familiar has been found
+at (498,164), (500,165) and (498,167) across three separate live runs, which
+is the +/-2 px the icons drift and nothing more.  So a fixed point is a fair
+thing to click, and V.FAMILIAR_XY is used when the template cannot be found.
+
+The world is a different matter and is never trusted that way: the camera
+follows the character, so anything out there has to be located before it can
+be clicked.  That is the whole reason the walk ends on a landmark rather than
+after a set number of clicks.
 
 WHY IT HOLDS RATHER THAN CLICKS
 -------------------------------
@@ -62,13 +75,12 @@ WALK_POLL = 0.4
 OPEN_TRIES = 20
 OPEN_POLL = 0.25
 
-# Hovering the familiar to bring up its panel.  Retried with a small nudge
-# because a pointer already sitting on the target produces no movement, and a
-# game that missed the first one has nothing further to react to.
-HOVER_TRIES = 3
-HOVER_WAIT_S = 1.6
-HOVER_POLL = 0.15
-HOVER_NUDGE = 26
+# Selecting the familiar, and waiting for its panel.  Generous, because the
+# reported delay after a click here is one to two seconds and a click that has
+# already worked costs nothing to wait on.
+SELECT_TRIES = 3
+SELECT_WAIT_S = 3.0
+SELECT_POLL = 0.15
 
 # Stop holding after this even if nothing else says to.  A safety net, not a
 # plan: every ordinary ending is decided by watching the level.
@@ -240,24 +252,25 @@ class SummoningTask(Task):
         else:
             raise Blocked("the summoning screen did not open")
 
-        # ---- bring up the familiar's panel ----------------------------
-        spot = V.find_familiar(frame)
-        yield Progress(f"hovering the familiar at {spot}")
+        # ---- select the familiar --------------------------------------
+        #
+        # SELECTED, not hovered.  Two live runs hovered it and its panel never
+        # appeared -- best UPGRADE match 0.30, which is the score for "not on
+        # screen at all" rather than for a panel drawn somewhere unexpected.
+        # An upgrade in this grid is opened by clicking it, which is also what
+        # the one to two second delay belongs to.
+        spot = V.find_familiar(frame) or V.FAMILIAR_XY
+        yield Progress(f"selecting the familiar at {spot}")
         sx = rect["left"] + cam.to_screen(spot[0])
         sy = rect["top"] + cam.to_screen(spot[1])
 
-        # Hovering is not one action but a state the game has to notice, so
-        # this waits for the panel rather than assuming a fixed delay is
-        # enough -- and nudges the pointer between waits, because a pointer
-        # that is already at the destination generates no movement for the
-        # game to react to.
         btn = None
-        for nudge in range(HOVER_TRIES):
-            if nudge:
-                clicker.move(sx + HOVER_NUDGE, sy + HOVER_NUDGE)
-                time.sleep(0.15)
-            clicker.move(sx, sy)
-            deadline = time.perf_counter() + HOVER_WAIT_S
+        for attempt in range(SELECT_TRIES):
+            if attempt:
+                yield Progress(f"panel did not open -- clicking again "
+                               f"({attempt + 1} of {SELECT_TRIES})")
+            clicker.click_at(sx, sy, time.perf_counter() + 0.25)
+            deadline = time.perf_counter() + SELECT_WAIT_S
             while time.perf_counter() < deadline:
                 if stopping():
                     return
@@ -265,7 +278,7 @@ class SummoningTask(Task):
                 btn = V.find_upgrade_button(frame)
                 if btn is not None:
                     break
-                time.sleep(HOVER_POLL)
+                time.sleep(SELECT_POLL)
             if btn is not None:
                 break
         if btn is None:
@@ -275,8 +288,8 @@ class SummoningTask(Task):
             seen, _ = V.upgrade_button_score(frame)
             raise Blocked(
                 f"the familiar's panel did not open -- best UPGRADE match "
-                f"{seen:.2f} after {HOVER_TRIES} hover attempts. Not pressing "
-                f"a guessed position, nothing was spent")
+                f"{seen:.2f} after {SELECT_TRIES} clicks. Not pressing a "
+                f"guessed position, nothing was spent")
 
         # ---- hold, watching the level ---------------------------------
         start = savefile.summoning_familiar_level()
