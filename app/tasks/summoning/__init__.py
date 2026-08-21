@@ -200,11 +200,16 @@ class SummoningTask(Task):
             if stopping():
                 return
         frame, _ = cam.grab()
-        if not V.at_sanctuary(frame):
+        score, which = V.sanctuary_score(frame)
+        if score < 0.70:
+            # The score goes in the message on purpose.  This failed live once
+            # with the pillars plainly on screen and the log said only that
+            # they "never came into view", which cannot be told apart from
+            # being in the wrong place -- a number says which it was.
             raise Blocked(
-                "could not reach the summoning sanctuary -- the rune pillars "
-                "never came into view after walking left")
-        yield Progress("at the sanctuary")
+                f"could not reach the summoning sanctuary -- best landmark "
+                f"match {score:.2f} (needs 0.70), closest was {which}")
+        yield Progress(f"at the sanctuary (matched {which} at {score:.2f})")
 
         # ---- open the summoning screen --------------------------------
         if stopping():

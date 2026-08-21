@@ -73,10 +73,46 @@ ENTRANCE_XY = (210, 285)         # click here to open the summoning screen
 WALK_LEFT_XY = (90, 380)
 
 
-def at_sanctuary(frame, scale=1.0, min_score=0.75):
-    """Whether the rune pillars are on screen, i.e. the walk is finished."""
-    score, _ = _match(frame, _load("pillars.png"), scale)
-    return score >= min_score
+# Several landmarks, and arrival needs only ONE of them.
+#
+# The first version used a single patch of the pillars, which live-failed with
+# the pillars plainly on screen.  Two things were wrong with it.  It contained
+# two of the floating runes, which drift; and it was chosen because it scored
+# 1.000 between two captures taken seconds apart, which does not mean static --
+# measured properly, the same pair moves other parts of that view a long way
+# (the egg cluster on the ground scores 0.495 against itself).
+#
+# So: three landmarks in different places, and any one of them is arrival.
+# A passing player, a wandering pet or a drifted rune can spoil one without
+# spoiling all three.  Measured against the two sanctuary captures and, as a
+# negative, against the town landing view and the world map:
+#
+#     sanctuary_chess2   0.919 stable   0.297 town   0.346 map
+#     sanctuary_chess    0.888 stable   0.208 town   0.138 map
+#     pillars            0.814 stable   0.269 town   0.307 map
+#
+# The gap between the worst true match and the best false one is wide enough
+# that 0.70 sits comfortably in it.
+SANCTUARY_TEMPLATES = ("sanctuary_chess2.png", "sanctuary_chess.png",
+                       "pillars.png")
+
+
+def sanctuary_score(frame, scale=1.0):
+    """Best landmark score, and which one -- for logs when arrival fails."""
+    best, which = 0.0, None
+    for name in SANCTUARY_TEMPLATES:
+        try:
+            score, _ = _match(frame, _load(name), scale)
+        except FileNotFoundError:
+            continue
+        if score > best:
+            best, which = score, name
+    return best, which
+
+
+def at_sanctuary(frame, scale=1.0, min_score=0.70):
+    """Whether any sanctuary landmark is on screen, i.e. the walk is done."""
+    return sanctuary_score(frame, scale)[0] >= min_score
 
 
 def _load(name):
