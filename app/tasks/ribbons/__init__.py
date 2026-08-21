@@ -60,6 +60,14 @@ OPEN_POLL = 0.3
 MERGE_SETTLE = 0.35       # let the drag land before looking at all
 MERGE_WAIT_S = 4.0        # how long to wait for the count to fall
 MERGE_POLL = 0.2
+# ...and then wait for it to STOP changing.  The count falling means the
+# source slot has emptied, which happens before the rest of the shelf has
+# finished redrawing -- and a cell caught mid-redraw hashes to something that
+# matches nothing, so pairs that really are there go unseen.  A live run
+# merged once and then reported no more pairs while a rank-2 pair was sitting
+# on the shelf.  Two identical reads in a row means the animation is done.
+SETTLE_WAIT_S = 3.0
+SETTLE_POLL = 0.15
 
 # A ceiling on merges in one visit.  Not expected to be reached -- 28 slots
 # cannot yield more than 27 merges even if every one cascaded -- and it exists
@@ -139,8 +147,9 @@ class RibbonsTask(Task):
         if sign is None:
             raise Blocked(
                 f"could not find the cooking MENU signboard in World 4 town "
-                f"-- best gold-frame score {V.menu_sign_score(frame):.2f} "
-                f"(needs {V.SIGN_GOLD_MIN})")
+                f"-- best candidate dark={V.menu_sign_score(frame)[0]:.2f} "
+                f"gold={V.menu_sign_score(frame)[1]:.2f} (needs "
+                f"{V.SIGN_DARK_MIN} and {V.SIGN_GOLD_MIN})")
 
         yield Progress(f"opening the cooking screen at {sign}")
         clicker.click_at(rect["left"] + cam.to_screen(sign[0]),
@@ -154,8 +163,30 @@ class RibbonsTask(Task):
                 return
             time.sleep(OPEN_POLL)
         raise Blocked(
-            f"the cooking screen did not open -- RIBBON SHELF heading best "
-            f"match {V.shelf_title_score(frame):.2f}")
+            f"the cooking screen did not open after clicking {sign} -- "
+            f"RIBBON SHELF heading best match "
+            f"{V.shelf_title_score(frame):.2f}")
+
+    def _settled_shelf(self, cam, fallback):
+        """
+        Read the shelf once it has stopped changing.
+
+        Two identical readings in a row.  Falls back to what the caller
+        already had if it never settles, which is no worse than before and
+        keeps a slow machine from ending the run.
+        """
+        prev = None
+        deadline = time.perf_counter() + SETTLE_WAIT_S
+        while time.perf_counter() < deadline:
+            frame, _ = cam.grab()
+            if not V.on_cooking_screen(frame):
+                return fallback
+            now = V.read_shelf(frame)
+            if prev is not None and now == prev:
+                return now
+            prev = now
+            time.sleep(SETTLE_POLL)
+        return prev if prev is not None else fallback
 
     def run(self, stop=None):
         # ensure_at() focuses the game and this task returns from it early, so
@@ -220,12 +251,13 @@ class RibbonsTask(Task):
                 if after is not None:
                     shelf = after
                 break
-            shelf = after
             self._merged += 1
             # The shelf is re-read every time round rather than planned once,
             # which is what lets a merge's own result pair with something --
             # two 3s make a 4, and if a 4 was already there that is a new
-            # merge that did not exist a moment ago.
+            # merge that did not exist a moment ago.  For that to work the
+            # reading has to be of a shelf that has stopped moving.
+            shelf = self._settled_shelf(cam, after)
 
         left = V.occupied(shelf)
         if self._merged:

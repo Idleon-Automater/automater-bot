@@ -73,10 +73,22 @@ EMPTY_STD = 26.0
 # Measured across six captures -- the real sign scores 0.15 and 0.17 for the
 # gold ring, and the two pale things that pass every other test score 0.004 and
 # 0.002.
-SIGN_AREA = (1100, 2400)         # pixels of pale interior
+# The gold ring alone is NOT enough, which a live run proved by clicking
+# something at (300, 84) that was not the sign.  Other players stand in this
+# town, and a character with a bright aura is a pale blob with plenty of gold
+# around it -- measured on a capture that happens to contain one, it scores
+# 0.379 for gold against the real sign's 0.153.
+#
+# What the sign has and a player does not is DARK CONTENT INSIDE: the word
+# MENU, three curls of steam and a bowl, filling about a third of a pale
+# board.  Measured: the sign reads 0.29 and 0.32 dark, and every other pale
+# blob across eight captures reads 0.18 or less.
+SIGN_AREA = (900, 2600)          # pixels of pale interior
 SIGN_MAX_CY = 220                # hung high; anything lower is furniture
 SIGN_GOLD_MIN = 0.08             # fraction of the surrounding ring that is gold
+SIGN_DARK_MIN = 0.24             # fraction of the board that is lettering
 _SIGN_RING = 8                   # how far outside the blob to look for gold
+_SIGN_DARK_V = 110               # below this counts as lettering
 
 # Proof that the cooking screen is open.  The RIBBON SHELF heading: 1.000 on
 # that screen and at most 0.218 against the town, the summoning grid and the
@@ -189,24 +201,26 @@ def _sign_candidates(frame, scale=1.0):
         ring = ring.reshape(-1, 3)
         gold = float(((ring[:, 0] >= 10) & (ring[:, 0] <= 30)
                       & (ring[:, 1] > 60) & (ring[:, 2] > 120)).mean())
-        out.append((gold, (int(round(cent[i][0] / scale)),
-                           int(round(cent[i][1] / scale)))))
+        board = hsv[y:y + h, x:x + w]
+        dark = float((board[:, :, 2] < _SIGN_DARK_V).mean())
+        out.append((dark, gold, (int(round(cent[i][0] / scale)),
+                                 int(round(cent[i][1] / scale)))))
     out.sort(reverse=True)
     return out
 
 
-def find_menu_sign(frame, scale=1.0, min_gold=SIGN_GOLD_MIN):
+def find_menu_sign(frame, scale=1.0):
     """Where the cooking MENU signboard is in World 4 town, or None."""
-    for gold, xy in _sign_candidates(frame, scale):
-        if gold >= min_gold:
+    for dark, gold, xy in _sign_candidates(frame, scale):
+        if gold >= SIGN_GOLD_MIN and dark >= SIGN_DARK_MIN:
             return xy
     return None
 
 
 def menu_sign_score(frame, scale=1.0):
-    """Best gold-ring fraction found -- for logs when the sign is missed."""
+    """(dark, gold) for the best candidate -- for logs when the sign is missed."""
     cands = _sign_candidates(frame, scale)
-    return cands[0][0] if cands else 0.0
+    return (cands[0][0], cands[0][1]) if cands else (0.0, 0.0)
 
 
 def shelf_title_score(frame, scale=1.0):
