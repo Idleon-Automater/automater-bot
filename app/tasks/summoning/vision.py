@@ -91,8 +91,12 @@ WALK_LEFT_XY = (90, 380)
 #     sanctuary_chess    0.888 stable   0.208 town   0.138 map
 #     pillars            0.814 stable   0.269 town   0.307 map
 #
-# The gap between the worst true match and the best false one is wide enough
-# that 0.70 sits comfortably in it.
+# The gap between the worst true match and the best false one is wide, and the
+# threshold sits in the middle of it rather than near the top.  0.70 was tried
+# first and a live arrival scored 0.73 -- correct, but three hundredths from
+# being called a failure, and the scene it was looking at had a second player
+# and their pet standing in it.  The false side has never exceeded 0.346, so
+# there is no reason to crowd the true side.
 SANCTUARY_TEMPLATES = ("sanctuary_chess2.png", "sanctuary_chess.png",
                        "pillars.png")
 
@@ -110,7 +114,7 @@ def sanctuary_score(frame, scale=1.0):
     return best, which
 
 
-def at_sanctuary(frame, scale=1.0, min_score=0.70):
+def at_sanctuary(frame, scale=1.0, min_score=0.60):
     """Whether any sanctuary landmark is on screen, i.e. the walk is done."""
     return sanctuary_score(frame, scale)[0] >= min_score
 
@@ -160,9 +164,14 @@ def find_familiar(frame, scale=1.0, min_score=0.80):
     return xy if score >= min_score else None
 
 
+def upgrade_button_score(frame, scale=1.0):
+    """(score, position) for the UPGRADE button -- for logs when it is missed."""
+    return _match(frame, _load("upgrade_button.png"), scale)
+
+
 def find_upgrade_button(frame, scale=1.0, min_score=0.80):
     """Where the UPGRADE button is, or None when the panel is not open."""
-    score, xy = _match(frame, _load("upgrade_button.png"), scale)
+    score, xy = upgrade_button_score(frame, scale)
     return xy if score >= min_score else None
 
 

@@ -62,6 +62,14 @@ WALK_POLL = 0.4
 OPEN_TRIES = 20
 OPEN_POLL = 0.25
 
+# Hovering the familiar to bring up its panel.  Retried with a small nudge
+# because a pointer already sitting on the target produces no movement, and a
+# game that missed the first one has nothing further to react to.
+HOVER_TRIES = 3
+HOVER_WAIT_S = 1.6
+HOVER_POLL = 0.15
+HOVER_NUDGE = 26
+
 # Stop holding after this even if nothing else says to.  A safety net, not a
 # plan: every ordinary ending is decided by watching the level.
 MAX_HOLD_S = 90.0
@@ -190,6 +198,12 @@ class SummoningTask(Task):
                 return
 
     def run(self, stop=None):
+        # ensure_at() focuses the game before it does anything, and this task
+        # deliberately returns from it early -- so nothing had focused the
+        # window, and a hover over an unfocused window draws no tooltip.  That
+        # is what stopped the first live run that got this far: the familiar
+        # was found and hovered, and its panel never appeared.
+        _window.focus()
         cam, rect = self._camera()
         clicker = _input.Clicker()
         stopping = (lambda: bool(stop and stop()))
@@ -201,14 +215,14 @@ class SummoningTask(Task):
                 return
         frame, _ = cam.grab()
         score, which = V.sanctuary_score(frame)
-        if score < 0.70:
+        if not V.at_sanctuary(frame):
             # The score goes in the message on purpose.  This failed live once
             # with the pillars plainly on screen and the log said only that
             # they "never came into view", which cannot be told apart from
             # being in the wrong place -- a number says which it was.
             raise Blocked(
                 f"could not reach the summoning sanctuary -- best landmark "
-                f"match {score:.2f} (needs 0.70), closest was {which}")
+                f"match {score:.2f}, closest was {which}")
         yield Progress(f"at the sanctuary (matched {which} at {score:.2f})")
 
         # ---- open the summoning screen --------------------------------
@@ -229,19 +243,40 @@ class SummoningTask(Task):
         # ---- bring up the familiar's panel ----------------------------
         spot = V.find_familiar(frame)
         yield Progress(f"hovering the familiar at {spot}")
-        clicker.move(rect["left"] + cam.to_screen(spot[0]),
-                     rect["top"] + cam.to_screen(spot[1]))
-        time.sleep(0.6)
+        sx = rect["left"] + cam.to_screen(spot[0])
+        sy = rect["top"] + cam.to_screen(spot[1])
 
-        frame, _ = cam.grab()
-        btn = V.find_upgrade_button(frame)
+        # Hovering is not one action but a state the game has to notice, so
+        # this waits for the panel rather than assuming a fixed delay is
+        # enough -- and nudges the pointer between waits, because a pointer
+        # that is already at the destination generates no movement for the
+        # game to react to.
+        btn = None
+        for nudge in range(HOVER_TRIES):
+            if nudge:
+                clicker.move(sx + HOVER_NUDGE, sy + HOVER_NUDGE)
+                time.sleep(0.15)
+            clicker.move(sx, sy)
+            deadline = time.perf_counter() + HOVER_WAIT_S
+            while time.perf_counter() < deadline:
+                if stopping():
+                    return
+                frame, _ = cam.grab()
+                btn = V.find_upgrade_button(frame)
+                if btn is not None:
+                    break
+                time.sleep(HOVER_POLL)
+            if btn is not None:
+                break
         if btn is None:
             # Never press a guessed position.  The buttons on this panel spend
             # essence that took days to earn, and the cost of doing nothing is
             # one visit against a cost window that is still open.
+            seen, _ = V.upgrade_button_score(frame)
             raise Blocked(
-                "the familiar's UPGRADE button did not appear -- not pressing "
-                "a guessed position. Nothing was spent")
+                f"the familiar's panel did not open -- best UPGRADE match "
+                f"{seen:.2f} after {HOVER_TRIES} hover attempts. Not pressing "
+                f"a guessed position, nothing was spent")
 
         # ---- hold, watching the level ---------------------------------
         start = savefile.summoning_familiar_level()
