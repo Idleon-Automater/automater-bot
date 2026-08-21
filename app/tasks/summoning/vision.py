@@ -46,6 +46,32 @@ LEVEL_REGION = (382, 112, 440, 132)      # x0, y0, x1, y1
 
 MAX_LEVEL = 25
 
+# GETTING THERE
+# -------------
+# The W6 town teleport does not land you at the sanctuary.  You arrive further
+# right -- pagoda on the left, money bag and portal on the right -- and have to
+# walk left to reach it.  The camera is clamped at that end, so once you are
+# there the view stops moving: measured, the walked capture and a second one
+# taken after walking again matched at dx=0 dy=0, score 1.000.  That is what
+# makes arrival testable at all, since the destination always looks the same.
+#
+# The rune pillars ARE the entrance -- clicking them opens the summoning
+# screen.  They are also the arrival test: the patch below scores 1.000 where
+# it belongs against a 0.299 runner-up.
+PILLARS_XY = (225, 270)          # where pillars.png sits once you have arrived
+ENTRANCE_XY = (210, 285)         # click here to open the summoning screen
+
+# Empty ground at the far left of the landing view.  Clicking it walks left
+# without opening anything; the shop, the portal and the pagoda all do open
+# something, which is why this is a named point and not "somewhere on the left".
+WALK_LEFT_XY = (80, 355)
+
+
+def at_sanctuary(frame, scale=1.0, min_score=0.75):
+    """Whether the rune pillars are on screen, i.e. the walk is finished."""
+    score, _ = _match(frame, _load("pillars.png"), scale)
+    return score >= min_score
+
 
 def _load(name):
     path = os.path.join(NAV_DIR, name)
