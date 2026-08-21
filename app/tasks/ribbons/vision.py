@@ -43,11 +43,18 @@ NAV_DIR = os.path.join(_HERE, "nav")
 COLS, ROWS = 4, 7
 SLOTS = COLS * ROWS
 
-# Fitted against the save rather than eyeballed.  Every (x0, dx, y0, dy) in a
-# wide sweep was scored by how closely cells the save calls the same rank
-# matched each other, and this one made them identical.
+# Fitted against the save rather than eyeballed: every (x0, dx, y0, dy) in a
+# wide sweep, scored by how closely cells the save calls the same rank match.
+#
+# Refitted once, and the first fit is a lesson.  It used a shelf whose only
+# duplicates sat in rows 2 to 4, so it never tested whether a rank in row 1
+# matches the same rank in row 4 -- and dy came out 44.25 instead of 44.000.
+# A quarter of a pixel per row is a whole pixel by row 4, which is enough to
+# change the sampled patch, and a live run duly merged rank 6 in slots 12 and
+# 18 while leaving the third rank 6 in slot 5 untouched.  The refit uses a
+# shelf with duplicates spanning rows 1, 2, 3, 4 and 5 and scores 0.000.
 GRID_X0, GRID_DX = 20.0, 46.00
-GRID_Y0, GRID_DY = 57.0, 44.25
+GRID_Y0, GRID_DY = 57.5, 44.00
 
 # Half-width of the patch compared per cell.  Inside the cell's border, so a
 # neighbouring slot's artwork can never leak in.
@@ -57,6 +64,19 @@ CELL_HALF = 15
 # occupied one carries a bright sprite, so the two populations are far apart --
 # this found all ten empty slots and no false ones.
 EMPTY_STD = 26.0
+
+# HOW CLOSE TWO CELLS HAVE TO BE TO COUNT AS THE SAME RIBBON
+#
+# The first version demanded they be IDENTICAL, which worked until the grid
+# was a quarter-pixel out and then failed silently by finding fewer pairs.
+# Exactness is the wrong tool when the thing being compared is sampled from a
+# fitted grid.
+#
+# Measured on a shelf of 21 ribbons with the corrected grid, allowing a pixel
+# of slide: every same-rank pair scores 0.00 and the closest DIFFERENT-rank
+# pair scores 37.71, out of 210 comparisons.  A threshold of 12 sits nowhere
+# near either population, so sub-pixel drift can no longer cost a merge.
+SAME_TOL = 12.0
 
 # THE MENU SIGNBOARD IS FOUND BY COLOUR, NOT BY TEMPLATE
 # ------------------------------------------------------
@@ -134,12 +154,12 @@ def _patch(frame, slot, scale=1.0):
 
 def read_shelf(frame, scale=1.0):
     """
-    The shelf as a list of 28 signatures, None for an empty slot.
+    The shelf as a list of 28 cell patches, None for an empty slot.
 
-    A signature is only ever compared with another signature.  It deliberately
-    says nothing about which rank it is, because nothing here needs to know
-    and pretending to know would mean shipping twenty sprites that go stale
-    the moment the game adds a twenty-first.
+    Patches rather than hashes.  Nothing here needs to know that a ribbon is a
+    rank 14 -- only whether two cells hold the same thing -- and keeping the
+    pixels lets that question be answered with a tolerance instead of demanding
+    they be identical.
     """
     out = []
     for slot in range(SLOTS):
@@ -147,8 +167,37 @@ def read_shelf(frame, scale=1.0):
         if p is None or float(p.std()) < EMPTY_STD:
             out.append(None)
         else:
-            out.append(hashlib.md5(np.ascontiguousarray(p).tobytes()).hexdigest())
+            out.append(np.ascontiguousarray(p).astype(np.int16))
     return out
+
+
+def same_ribbon(a, b, tol=SAME_TOL):
+    """Whether two cell patches hold the same ribbon, allowing a pixel of slide."""
+    if a is None or b is None:
+        return False
+    if not hasattr(a, "shape") or not hasattr(b, "shape"):
+        return a == b          # lets a test hand this plain labels
+    if a.shape != b.shape:
+        return False
+    for dy in (0, -1, 1):
+        for dx in (0, -1, 1):
+            shifted = b if (dy or dx) == 0 else np.roll(np.roll(b, dy, 0), dx, 1)
+            if float(np.abs(a - shifted).mean()) <= tol:
+                return True
+    return False
+
+
+def _cell_key(p):
+    if p is None:
+        return None
+    if not hasattr(p, "tobytes"):
+        return p              # lets a test hand this plain labels
+    return hashlib.md5(np.ascontiguousarray(p).tobytes()).hexdigest()
+
+
+def shelf_key(shelf):
+    """A hashable summary, for asking whether the shelf has stopped changing."""
+    return tuple(_cell_key(p) for p in shelf)
 
 
 def find_pairs(shelf):
@@ -156,22 +205,25 @@ def find_pairs(shelf):
     Merges worth making, as (source, destination) slots.
 
     Destination is the LOWER slot and source the higher, so the shelf packs
-    towards its start and the empties collect at the end -- which is where the
-    game puts new ribbons, and keeps the shelf from fragmenting.
+    towards its start and the empties collect at the end.
 
     One pair per rank per pass, never two.  A merge changes what the shelf
     holds, and the result can be one rank up or two, so any second pair
     planned from the same reading may already be wrong.  The caller re-reads.
     """
-    seen = {}
     pairs = []
-    for slot, sig in enumerate(shelf):
-        if sig is None:
+    taken = set()
+    for slot in range(SLOTS):
+        if shelf[slot] is None or slot in taken:
             continue
-        if sig in seen:
-            pairs.append((slot, seen.pop(sig)))
-        else:
-            seen[sig] = slot
+        for other in range(slot + 1, SLOTS):
+            if shelf[other] is None or other in taken:
+                continue
+            if same_ribbon(shelf[slot], shelf[other]):
+                pairs.append((other, slot))
+                taken.add(slot)
+                taken.add(other)
+                break
     return pairs
 
 

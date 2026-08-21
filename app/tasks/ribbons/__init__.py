@@ -247,18 +247,23 @@ class RibbonsTask(Task):
         already had if it never settles, which is no worse than before and
         keeps a slow machine from ending the run.
         """
-        prev = None
+        prev = None                    # the previous reading's key
+        last = fallback
         deadline = time.perf_counter() + SETTLE_WAIT_S
         while time.perf_counter() < deadline:
             frame, _ = cam.grab()
             if not V.on_cooking_screen(frame):
                 return fallback
             now = V.read_shelf(frame)
-            if prev is not None and now == prev:
+            # Compared by key, not by value: a shelf is a list of pixel
+            # patches now and "==" on those is not a yes-or-no answer.
+            key = V.shelf_key(now)
+            if prev is not None and key == prev:
                 return now
-            prev = now
+            prev = key
+            last = now
             time.sleep(SETTLE_POLL)
-        return prev if prev is not None else fallback
+        return last
 
     def run(self, stop=None):
         # ensure_at() focuses the game and this task returns from it early, so
