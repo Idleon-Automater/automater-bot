@@ -32,7 +32,6 @@ import time
 import core.input as _input
 import core.window as _window
 from core import savefile
-from core.navigate import Location
 from core.task import Blocked, Progress, Result, Task
 
 from . import vision as V
@@ -40,12 +39,21 @@ from . import vision as V
 _HERE = os.path.dirname(os.path.abspath(__file__))
 NAV = os.path.join(_HERE, "nav")
 
-# How long to keep clicking left before giving up on reaching the sanctuary.
-# The walk takes a few seconds; this is loose enough not to matter and tight
-# enough that a task which is somehow not in town stops rather than clicking
-# the same spot forever.
-WALK_TRIES = 12
-WALK_SETTLE = 1.1
+# HOW MANY TIMES TO CLICK LEFT, AND WHY IT IS THIS SMALL
+# ------------------------------------------------------
+# Two, and the first version's twelve is what made this dangerous.  A click
+# does not mean "walk a bit", it means "walk to there", so clicking again
+# while the character is still moving sends it PAST the sanctuary -- and past
+# the sanctuary is off the edge of the town onto the next map, which is a
+# place nothing in the queue expects to be standing.  Reported: it "walked
+# several times left instead of once, leading it to leave the town map and
+# wander off".
+#
+# So: click once, then WATCH rather than click.  A second click only if the
+# first plainly did not take, and never a third.
+WALK_TRIES = 2
+WALK_WATCH_S = 9.0        # how long to watch for the pillars after one click
+WALK_POLL = 0.4
 
 # The summoning screen takes a moment to draw -- reported at one to two
 # seconds -- so this waits on the screen appearing rather than on a fixed
@@ -78,11 +86,18 @@ class SummoningTask(Task):
     # with the observed median once there are runs to go on.
     nominal_seconds = 120.0
 
-    location = Location(
-        world=6,
-        map_name="World 6 Town",
-        via_town=True,
-    )
+    # NO Location, and that is deliberate rather than an omission.
+    #
+    # ensure_at() offers one shape of journey: travel, then find the entrance
+    # and click it.  This route does not have that shape -- the World 6
+    # teleport lands somewhere the sanctuary cannot be seen from, so there is
+    # a walk in the middle, and no entry template exists that is visible at
+    # the point ensure_at would go looking for one.
+    #
+    # Rather than bend the shared machinery around one odd route, the task
+    # drives its own: see _travel_to_sanctuary below.  can_run() stays
+    # permissive so ensure_at returns immediately and does not travel first.
+    location = None
 
     def __init__(self, **kw):
         self._summary = None
@@ -100,10 +115,11 @@ class SummoningTask(Task):
         return hoops.Camera(mss.mss(), rect), rect
 
     def can_run(self):
-        # Only that the game is reachable.  Everything else this task needs --
-        # standing at the sanctuary, the screen being open -- it creates itself
-        # in run(), because the teleport does not land at the sanctuary and
-        # there is nothing here for can_run() to usefully insist on.
+        # Only that the game is reachable.  Everything else this task needs it
+        # creates itself in run(), and this must NOT insist on being at the
+        # sanctuary: ensure_at() asks can_run() first and treats a pass as
+        # "already there", so a stricter check here would just make the shared
+        # travel machinery attempt a journey it cannot complete.
         try:
             self._camera()
         except RuntimeError as e:
@@ -116,26 +132,78 @@ class SummoningTask(Task):
         if settle:
             time.sleep(settle)
 
+    def _watch_for_pillars(self, cam, stopping, seconds=None):
+        """
+        Wait for the pillars to come into view.  True if they did.
+
+        `seconds=None` rather than the constant as a default: a default is
+        bound once when the function is defined, so writing WALK_WATCH_S there
+        makes the constant look adjustable while quietly ignoring any change
+        to it -- which is exactly how a test of this loop came out wrong.
+        """
+        seconds = WALK_WATCH_S if seconds is None else seconds
+        deadline = time.perf_counter() + seconds
+        while time.perf_counter() < deadline:
+            if stopping():
+                return False
+            frame, _ = cam.grab()
+            if V.at_sanctuary(frame):
+                return True
+            time.sleep(WALK_POLL)
+        return False
+
+    def _travel_to_sanctuary(self, cam, rect, clicker, stopping):
+        """
+        World 6 town, then left to the sanctuary.  Yields Progress.
+
+        Done here rather than through ensure_at() because of the walk in the
+        middle -- see the note on `location`.  It also means the teleport
+        happens unconditionally unless the pillars are ALREADY in view, which
+        is the fix for the first live failure: can_run() passing was taken as
+        "already at W6 Summoning" while the character stood in World 5 town,
+        so nothing travelled and the walk then clicked at empty scenery.
+        """
+        from core.navigate import Navigator
+
+        frame, _ = cam.grab()
+        if V.at_sanctuary(frame):
+            return                      # already standing in front of them
+
+        yield Progress("travelling to World 6 town")
+        nav = Navigator(rect, clicker)
+        nav.open_map()
+        nav.go_to_town(6)
+        yield Progress("arrived in town")
+        if stopping():
+            return
+
+        # One click, then watch.  A click is "walk to there", not "walk a
+        # bit", so a second one issued while the character is still moving
+        # carries it past the sanctuary and off the map entirely.
+        for attempt in range(1, WALK_TRIES + 1):
+            yield Progress("walking left to the sanctuary"
+                           + (f" (attempt {attempt})" if attempt > 1 else ""))
+            self._click(clicker, rect, cam, V.WALK_LEFT_XY)
+            if self._watch_for_pillars(cam, stopping):
+                return
+            if stopping():
+                return
+
     def run(self, stop=None):
         cam, rect = self._camera()
         clicker = _input.Clicker()
         stopping = (lambda: bool(stop and stop()))
 
-        # ---- walk to the sanctuary ------------------------------------
+        # ---- get to the sanctuary -------------------------------------
+        for step in self._travel_to_sanctuary(cam, rect, clicker, stopping):
+            yield step
+            if stopping():
+                return
         frame, _ = cam.grab()
         if not V.at_sanctuary(frame):
-            yield Progress("walking left to the sanctuary")
-            for _ in range(WALK_TRIES):
-                if stopping():
-                    return
-                self._click(clicker, rect, cam, V.WALK_LEFT_XY, WALK_SETTLE)
-                frame, _ = cam.grab()
-                if V.at_sanctuary(frame):
-                    break
-            else:
-                raise Blocked(
-                    "could not reach the summoning sanctuary -- the rune "
-                    "pillars never came into view after walking left")
+            raise Blocked(
+                "could not reach the summoning sanctuary -- the rune pillars "
+                "never came into view after walking left")
         yield Progress("at the sanctuary")
 
         # ---- open the summoning screen --------------------------------
