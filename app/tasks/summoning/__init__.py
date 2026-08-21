@@ -94,7 +94,7 @@ IDLE_GIVE_UP_S = 8.0
 
 
 class SummoningTask(Task):
-    name = "W6 Summoning"
+    name = "Summoning"
     world = 6
     description = ("Buys the summoning familiar up to 25/25 while its cost is "
                    "reset. Skips itself when it is maxed or still on cooldown.")
@@ -182,7 +182,7 @@ class SummoningTask(Task):
         middle -- see the note on `location`.  It also means the teleport
         happens unconditionally unless the pillars are ALREADY in view, which
         is the fix for the first live failure: can_run() passing was taken as
-        "already at W6 Summoning" while the character stood in World 5 town,
+        "already at Summoning" while the character stood in World 5 town,
         so nothing travelled and the walk then clicked at empty scenery.
         """
         from core.navigate import Navigator
@@ -339,19 +339,19 @@ class SummoningTask(Task):
         yield Progress(f"held for {held:.1f}s, level {start} -> {reached}")
 
         if state["maxed"] or reached >= V.MAX_LEVEL:
-            self._summary = (f"W6 Summoning: familiar maxed at "
+            self._summary = (f"Summoning: familiar maxed at "
                              f"{V.MAX_LEVEL}/{V.MAX_LEVEL} "
                              f"(+{self._gained} this run)")
         elif self._gained:
-            self._summary = (f"W6 Summoning: familiar {reached}/{V.MAX_LEVEL} "
+            self._summary = (f"Summoning: familiar {reached}/{V.MAX_LEVEL} "
                              f"(+{self._gained}), stopped early - probably out "
                              f"of essence")
         else:
-            self._summary = (f"W6 Summoning: nothing bought, familiar still "
+            self._summary = (f"Summoning: nothing bought, familiar still "
                              f"{reached}/{V.MAX_LEVEL} - out of essence?")
 
     def report(self, steps, seconds):
         return Result(ok=True,
-                      summary=self._summary or "W6 Summoning: finished",
+                      summary=self._summary or "Summoning: finished",
                       detail={"levels_gained": self._gained},
                       seconds=seconds)

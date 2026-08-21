@@ -47,7 +47,10 @@ def task_factories():
 # would silently drop it from lists people had already built.  Kept apart from
 # the real table rather than folded into it -- the first attempt put them in
 # the same dict and the renamed task appeared twice in the task palette.
-RENAMED = {"W3 Refinery": "Refinery"}
+RENAMED = {"W3 Refinery": "Refinery",
+           "W3 Equinox": "Equinox",
+           "W4 Ribbons": "Ribbons",
+           "W6 Summoning": "Summoning"}
 
 
 def available_tasks():
@@ -120,7 +123,18 @@ def estimate_for(task):
     three.  The default estimate() already falls back to nominal, so there is
     nothing to gain by going around it.
     """
-    runs = load_history().get(task.name, {}).get("runs", [])
+    history = load_history()
+    runs = history.get(task.name, {}).get("runs", [])
+    if not runs:
+        # A renamed task should not forget how long it takes.  The history is
+        # keyed by name, so "W6 Summoning" -> "Summoning" would otherwise
+        # throw away every timing already learned and go back to quoting the
+        # nominal guess.
+        for was, now in RENAMED.items():
+            if now == task.name:
+                runs = history.get(was, {}).get("runs", [])
+                if runs:
+                    break
     return task.estimate(runs)
 
 

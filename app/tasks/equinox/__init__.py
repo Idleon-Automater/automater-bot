@@ -36,7 +36,7 @@ NAV = os.path.join(_HERE, "nav")
 
 
 class EquinoxTask(Task):
-    name = "W3 Equinox"
+    name = "Equinox"
     world = 3
     description = ("Spends a full Equinox bar on the dream you choose. Does "
                    "nothing if the bar is not full yet.")
@@ -93,7 +93,7 @@ class EquinoxTask(Task):
     def can_run(self):
         # Proving the dream screen is OPEN, not merely that a window exists.
         # The first version checked only the latter, so ensure_at concluded
-        # "already at W3 Equinox" and skipped travelling entirely -- then read
+        # "already at Equinox" and skipped travelling entirely -- then read
         # the bar off whatever screen was showing and reported "not full".
         # A false negative that reads like a clean result is worse than a
         # failure, because nothing about it looks wrong.
@@ -122,7 +122,7 @@ class EquinoxTask(Task):
         if not V.bar_is_full(frame, cam):
             # The common case, and not a failure.  Saying so plainly beats a
             # warning: nothing went wrong, there is simply nothing to spend.
-            self._summary = "W3 Equinox: bar not full yet, nothing to upgrade"
+            self._summary = "Equinox: bar not full yet, nothing to upgrade"
             yield Progress("the bar is not full yet - leaving it alone")
             return
 
@@ -166,16 +166,16 @@ class EquinoxTask(Task):
         # successful upgrade.
         frame, _ = cam.grab()
         if V.bar_is_full(frame, cam):
-            self._summary = (f"W3 Equinox: pressed UPGRADE on {self.dream}, "
+            self._summary = (f"Equinox: pressed UPGRADE on {self.dream}, "
                              f"but the bar is still full - it may not have "
                              f"registered")
             yield Progress("the bar is still full - the upgrade may not have "
                            "registered")
         else:
-            self._summary = f"W3 Equinox: upgraded {self.dream}"
+            self._summary = f"Equinox: upgraded {self.dream}"
             yield Progress("the bar emptied - upgrade applied")
 
     def report(self, steps, seconds):
         return Result(ok=True,
-                      summary=self._summary or "W3 Equinox: finished",
+                      summary=self._summary or "Equinox: finished",
                       seconds=seconds)

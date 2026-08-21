@@ -105,7 +105,7 @@ MAX_MERGES = 40
 
 
 class RibbonsTask(Task):
-    name = "W4 Ribbons"
+    name = "Ribbons"
     world = 4
     description = ("Merges duplicate ribbons on the cooking shelf into higher "
                    "ranks. Does nothing if there are no duplicates.")
@@ -118,7 +118,7 @@ class RibbonsTask(Task):
     # are runs to go on.
     nominal_seconds = 45.0
 
-    # Its own route, for the same reason as W6 Summoning: ensure_at() travels
+    # Its own route, for the same reason as Summoning: ensure_at() travels
     # and then clicks ONE entry template, and this needs the town teleport
     # followed by a signboard that is only reachable once the town has loaded.
     # can_run() stays permissive so ensure_at returns without travelling.
@@ -349,15 +349,15 @@ class RibbonsTask(Task):
 
         left = V.occupied(shelf)
         if self._merged:
-            self._summary = (f"W4 Ribbons: {self._merged} merge(s), "
+            self._summary = (f"Ribbons: {self._merged} merge(s), "
                              f"{left} ribbon(s) left on the shelf")
         else:
-            self._summary = (f"W4 Ribbons: nothing to merge, "
+            self._summary = (f"Ribbons: nothing to merge, "
                              f"{left} ribbon(s) on the shelf")
         yield Progress(self._summary)
 
     def report(self, steps, seconds):
         return Result(ok=True,
-                      summary=self._summary or "W4 Ribbons: finished",
+                      summary=self._summary or "Ribbons: finished",
                       detail={"merges": self._merged},
                       seconds=seconds)

@@ -151,7 +151,7 @@ STARTER_LISTS = [
         ("Sushi Station", {"max_minutes": None}),
     ]),
     ("Weekly", [
-        ("W3 Equinox",    {"dream": "Equinox Symbols"}),
+        ("Equinox",       {"dream": "Equinox Symbols"}),
         ("Swishy Hoops",  {"games": 1, "max_score": 48}),
         ("Throwy Darts",  {"games": 1, "max_score": 250}),
         ("Sushi Station", {"max_minutes": 45.0}),
