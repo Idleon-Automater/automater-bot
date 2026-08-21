@@ -46,6 +46,12 @@ WORLDS = 7
 
 _cache = {"names": None, "details": None}
 
+# What a map name may be made of.  Used to notice a misread, not to find one.
+_NAME_OK = re.compile(r"[A-Za-z0-9_'.\- ]+")
+# How far past a declared length to look for the start of the next field when
+# the name does not read cleanly.  Generous: the framing seen was six bytes.
+_FRAMING_SLACK = 48
+
 
 def _parse_names(text):
     """MapDispName as a list, index = map id.  None where the game stored a
@@ -67,15 +73,34 @@ def _parse_names(text):
             if depth <= 0:
                 break
             continue
-        # Strings declare their own length.  Matching the name with a character
-        # class instead reads "Blunder_Hills" as "Blunder_Hillsy13" -- the same
-        # mistake that once cost the save-diff tool whole arrays.
+        # Strings declare their own length.  Matching the name with a
+        # character class instead reads "Blunder_Hills" as "Blunder_Hillsy13".
         m = re.match(r"y(\d+):", text[p:])
         if m:
             n = int(m.group(1))
             start = p + m.end()
-            out.append(text[start:start + n])
-            p = start + n
+            name = text[start:start + n]
+            end = start + n
+            # ...but the length alone is not enough, because this is a raw
+            # leveldb file and its block framing gets written INTO a record.
+            # Seen live: "y13:)adq�The_Clamworks" -- the 13 is
+            # correct and six bytes of framing sit between the marker and the
+            # name, so reading thirteen characters from the marker returns
+            # rubbish and every later index is wrong. That cost twenty map
+            # names, World 7 among them.
+            #
+            # The field ends where the next one starts, so the name is its
+            # LAST n characters. Only used when the straightforward read does
+            # not look like a name, so the common case pays nothing.
+            if not _NAME_OK.fullmatch(name):
+                nxt = re.search(r"y\d+:", text[start:start + n + _FRAMING_SLACK])
+                if nxt:
+                    field = text[start:start + nxt.start()]
+                    if len(field) >= n:
+                        name = field[-n:]
+                        end = start + nxt.start()
+            out.append(name if _NAME_OK.fullmatch(name) else None)
+            p = end
             continue
         m = re.match(r"R\d+|z|i-?\d+|d[\d.eE+-]+", text[p:])
         if m:

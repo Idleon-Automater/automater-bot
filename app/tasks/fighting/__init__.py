@@ -55,6 +55,16 @@ def _choices():
     return out
 
 
+def _screen_change(before, after):
+    """How much the picture changed, ignoring the HUD along the bottom."""
+    import numpy as np
+    h = min(before.shape[0], after.shape[0], 460)
+    w = min(before.shape[1], after.shape[1])
+    a = before[:h, :w].astype(np.int16)
+    b = after[:h, :w].astype(np.int16)
+    return float(np.abs(a - b).mean())
+
+
 def _map_id_for(choice):
     """The map id behind a dropdown entry, or None."""
     if not choice or " - " not in choice:
@@ -64,6 +74,18 @@ def _map_id_for(choice):
 
 # After double-clicking a marker.  The map screen closes and the new map loads.
 ARRIVE_S = 3.5
+
+# How different the screen must look afterwards to count as having moved.
+#
+# A teleport that does not happen is silent: the map screen closes and the
+# character is standing where it was.  A run reported "1 minute at The Hole"
+# having never left World 1, because nothing checked. Two maps never look
+# alike, so a screen that is barely changed means the journey did not happen.
+#
+# Measured across the captures on hand: two shots of the SAME place differ by
+# 0.2, and two different maps by 75 to 90.  The threshold sits between, far
+# from both.
+MOVED_MIN_DIFF = 12.0
 
 # Pressing AUTO, and checking it took.
 AUTO_TRIES = 3
@@ -184,12 +206,23 @@ class FightingTask(Task):
         # Double-click rather than select-then-TELEPORT: the player confirmed
         # both do the same thing, and one action cannot half-happen the way a
         # pair of them can.
+        before, _ = cam.grab()
         sx = rect["left"] + cam.to_screen(spot[0])
         sy = rect["top"] + cam.to_screen(spot[1])
         clicker.double_click(sx, sy)
         time.sleep(ARRIVE_S)
         if stopping():
             return
+
+        after, _ = cam.grab()
+        moved = _screen_change(before, after)
+        if moved < MOVED_MIN_DIFF:
+            raise Blocked(
+                f"the teleport to {self.where} did not happen -- the screen is "
+                f"unchanged (difference {moved:.1f}, needs {MOVED_MIN_DIFF}). "
+                f"Either the map is not unlocked, or its marker is not where "
+                f"the save says")
+        yield Progress(f"arrived (screen changed by {moved:.0f})")
 
         # ---- start fighting ---------------------------------------------
         frame, _ = cam.grab()

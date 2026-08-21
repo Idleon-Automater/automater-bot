@@ -72,7 +72,14 @@ def _read_newest(save_dir=SAVE_DIR):
             dst = os.path.join(tmp, os.path.basename(f))
             try:
                 shutil.copy2(f, dst)
-                text = open(dst, "rb").read().decode("ascii", "ignore")
+                # "replace", not "ignore".  The format writes strings as
+                # y<length>:<text> with the length in BYTES, so a reader that
+                # walks by that length needs one character per byte.  "ignore"
+                # DROPS every non-ascii byte, which slides every later offset
+                # and quietly turns the map name table into rubbish partway
+                # through -- 307 names instead of 327, the last of them
+                # ")adqThe_Cla".  "replace" keeps the count exact.
+                text = open(dst, "rb").read().decode("ascii", "replace")
             except OSError:
                 continue
             if best is None or len(text) > len(best):

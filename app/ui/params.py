@@ -13,12 +13,46 @@ kind of thing a user has to be told, and would leave "stop at score 0" looking
 like a valid choice.  Ticking a box that says "no limit" cannot be misread.
 """
 
-from PySide6.QtCore import Signal
+import re
+
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox,
                                QFormLayout, QLabel, QSpinBox, QVBoxLayout,
                                QWidget)
 
+from core import worlds
 from ui import theme
+
+# Options that begin "W3 - " belong to a world, and are tinted and grouped by
+# it.  The fighting task offers 141 maps in one list, which without this is a
+# wall of names where finding World 5 means reading a hundred lines of World 1
+# to 4 first.  The tint is the same one the run list paints behind a task from
+# that world, so the two places agree about what World 5 looks like.
+#
+# A heuristic on the text rather than something declared on the Param: nothing
+# else in the program needs it, and a list whose options do not carry a world
+# simply gets the plain combo box it had before.
+_WORLD_OPTION = re.compile(r"^W([1-7]) - ")
+
+
+def _fill_choices(box, choices):
+    """Add the options, tinted and separated by world where they say one."""
+    last = None
+    for choice in choices:
+        text = str(choice)
+        m = _WORLD_OPTION.match(text)
+        world = int(m.group(1)) if m else None
+        if world is not None and last is not None and world != last:
+            box.insertSeparator(box.count())
+        box.addItem(text)
+        if world is not None:
+            i = box.count() - 1
+            box.setItemData(i, QBrush(QColor(worlds.tint(world, 0.72))),
+                            Qt.BackgroundRole)
+            box.setItemData(i, QBrush(QColor(theme.TITLE)),
+                            Qt.ForegroundRole)
+        last = world
 
 
 class ParamEditor(QWidget):
@@ -85,7 +119,7 @@ class ParamEditor(QWidget):
 
             if p.kind == "choice":
                 w = QComboBox()
-                w.addItems([str(c) for c in p.choices])
+                _fill_choices(w, p.choices)
                 # Select by text, not by index: a saved list stores the option
                 # the user picked, so it survives the choices being reordered.
                 i = w.findText(str(value))
