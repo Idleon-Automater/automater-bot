@@ -285,6 +285,20 @@ def summoning_familiar_skip_reason(text=None):
 # which has the same self-correcting property for a different reason: it is
 # whatever the bar has actually been doing lately, so a rate upgrade shows up
 # on its own without anything needing to know that upgrades exist.
+#
+# HOW ACCURATE, AND WHY IT DOES NOT NEED TO BE BETTER
+# ---------------------------------------------------
+# Two measurements minutes apart gave 17,982/hr and 16,271/hr -- about ten per
+# cent apart, which on a four-hour countdown is twenty-odd minutes.  Some of
+# that is real: the client's periodic fill is guarded by `120 != CurrentMap`,
+# so the bar stops filling while the player stands on that map, and a sample
+# spanning such a spell measures a rate the bar was not achieving.
+#
+# It does not need to be better, because both directions self-correct and
+# neither is expensive.  Too low and the task sleeps a little past the moment
+# it could have gone; too high and it makes one trip, finds the bar short,
+# does nothing -- which is behaviour it already had -- and tries again later.
+# Averaging each new pair with the running estimate settles it either way.
 DREAM_SLOTS = slice(2, 16)
 
 
