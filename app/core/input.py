@@ -326,6 +326,49 @@ def press_hold(clicker, x, y, seconds):
     time.sleep(random.uniform(0.10, 0.25))
 
 
+def hold_until(clicker, x, y, done, max_seconds=90.0):
+    """
+    Hold the left button at (x, y) until `done()` says stop, or time runs out.
+
+    press_hold's fixed duration cannot serve a button whose job takes an
+    unknown time.  The summoning familiar is the case: roughly one press in
+    five counts, so buying it out takes anywhere from a couple of seconds to
+    twenty, and both guessing long (wasted essence past the cap) and guessing
+    short (stopping half done) are worse than watching.
+
+    `done()` is called in a tight loop and is expected to block for about a
+    frame -- a screen grab does, at 16.67 ms on a 60 Hz display -- so there is
+    no sleep here.  Anything that returns instantly should add its own, or
+    this spins.
+
+    Returns (seconds held, whether done() ended it).  The release is in a
+    finally: an exception, a stop request or Ctrl+C must not leave the mouse
+    button stuck down on someone's game.
+    """
+    if clicker is not None:
+        clicker.move(x, y)
+    else:
+        sx, sy = _cursor_pos()
+        human_move(sx, sy, x, y)
+    time.sleep(random.uniform(0.04, 0.10))
+    down = _mouse_event(_MOUSEEVENTF_LEFTDOWN)
+    user32.SendInput(1, ctypes.byref(down), ctypes.sizeof(_INPUT))
+    finished = False
+    t0 = time.perf_counter()
+    try:
+        while time.perf_counter() - t0 < max_seconds:
+            if done():
+                finished = True
+                break
+    finally:
+        up = _mouse_event(_MOUSEEVENTF_LEFTUP)
+        user32.SendInput(1, ctypes.byref(up), ctypes.sizeof(_INPUT))
+    if clicker is not None:
+        clicker._last_pos = (int(x), int(y))
+    time.sleep(random.uniform(0.10, 0.25))
+    return time.perf_counter() - t0, finished
+
+
 def human_move(x0, y0, x1, y1, steps=None):
     """
     Move the pointer along an eased, slightly arced path with jitter.
