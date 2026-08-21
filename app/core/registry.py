@@ -36,10 +36,11 @@ def task_factories():
     from tasks.refinery import RefineryTask
     from tasks.equinox import EquinoxTask
     from tasks.summoning import SummoningTask
+    from tasks.ribbons import RibbonsTask
 
     return {cls.name: cls
             for cls in (SushiTask, DartsTask, HoopsTask, RefineryTask,
-                        EquinoxTask, SummoningTask)}
+                        EquinoxTask, SummoningTask, RibbonsTask)}
 
 
 # Names tasks used to have.  A saved list stores the name, so renaming a task
