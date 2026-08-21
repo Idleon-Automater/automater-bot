@@ -260,6 +260,165 @@ def summoning_familiar_skip_reason(text=None):
     return f"maxed at {int(lv)}/{FAMILIAR_MAX}"
 
 
+# THE EQUINOX BAR
+# ---------------
+# Two numbers move here, not one, which is why nothing about this can be a
+# stored constant: the bar's CAP rises every time a dream is upgraded, and its
+# fill RATE rises as the player buys rate upgrades.
+#
+# The cap is computable exactly.  Lifted from the client, which sums the
+# thirteen dream levels (plus a fourteenth slot that is not unlocked yet) and
+# does:
+#
+#     L   = sum(Dream[2..15])
+#     cap = round((120 + 40*L) * 1.02**L)
+#
+# Checked against a number written down from a screenshot in an earlier
+# session -- "8,230 / 730,265" -- and L=222 gives 730265 exactly.  Because it
+# is derived from the levels, it re-computes itself the moment a dream is
+# upgraded and can never go stale.
+#
+# The rate cannot be computed.  The client builds it from a long product of
+# bonuses -- summoning voting, a research grid bonus, a lore bonus, holes, the
+# event shop, an options entry, and _customBlock_Companions(15), which is one
+# of the SERVER calls that never reach the disk.  So it is MEASURED instead,
+# which has the same self-correcting property for a different reason: it is
+# whatever the bar has actually been doing lately, so a rate upgrade shows up
+# on its own without anything needing to know that upgrades exist.
+DREAM_SLOTS = slice(2, 16)
+
+
+def dream_bar(text=None):
+    """(current, cap) for the Equinox bar, or None."""
+    d = values("Dream", text)
+    if not d or len(d) < 16 or not isinstance(d[0], (int, float)):
+        return None
+    levels = [v for v in d[DREAM_SLOTS] if isinstance(v, (int, float))]
+    if len(levels) < 14:
+        return None
+    total = sum(levels)
+    cap = round((120 + 40 * total) * (1.02 ** total))
+    return float(d[0]), int(cap)
+
+
+def save_written_at(save_dir=SAVE_DIR):
+    """When the save was last written, or None.
+
+    The rate is measured against THIS rather than against the clock: the game
+    flushes every ~175 s, so two reads a minute apart usually see the same
+    bytes, and dividing a real gain by a fake interval invents a rate.
+    """
+    newest = None
+    for pat in ("*.ldb", "*.log"):
+        for f in glob.glob(os.path.join(save_dir, pat)):
+            try:
+                mt = os.path.getmtime(f)
+            except OSError:
+                continue
+            if newest is None or mt > newest:
+                newest = mt
+    return newest
+
+
+# Where the learned rate lives between launches.  One sample and one rate --
+# there is no history worth keeping, because a rate upgrade makes every older
+# reading wrong and the newest pair is always the most honest answer.
+_RATE_KEY = "equinox_fill_rate"
+_SAMPLE_KEY = "equinox_bar_sample"
+
+# Below this the bar is not full and the task has nothing to spend.  Not an
+# equality test: the client stores a float and clamps it with Math.min, so it
+# lands a hair under the cap as often as exactly on it.
+FULL_FRACTION = 0.999
+
+
+def _remember(key, value):
+    try:
+        from core import settings
+        settings.set(key, value)
+    except Exception:
+        pass                      # a rate that cannot be saved is still usable
+
+
+def _recall(key, default=None):
+    try:
+        from core import settings
+        got = settings.get(key)
+        return default if got is None else got
+    except Exception:
+        return default
+
+
+def observe_dream_bar(text=None):
+    """
+    Update the learned fill rate from the save.  Returns it, or None.
+
+    Called whenever anything asks about the bar, so the estimate improves by
+    itself as long as the program is open.  A sample is only usable against
+    the one before it when the save has actually been rewritten in between,
+    the bar has GROWN, and the cap has not changed -- an upgrade resets the
+    bar and raises the cap at once, and pairing across that would read as a
+    huge negative rate.
+    """
+    text = _newest_text() if text is None else text
+    bar = dream_bar(text)
+    written = save_written_at()
+    if bar is None or written is None:
+        return _recall(_RATE_KEY)
+    cur, cap = bar
+    prev = _recall(_SAMPLE_KEY) or {}
+    rate = _recall(_RATE_KEY)
+
+    ok = (prev.get("cap") == cap
+          and isinstance(prev.get("at"), (int, float))
+          and isinstance(prev.get("value"), (int, float))
+          and written > prev["at"]
+          and cur > prev["value"]
+          # A bar sitting at its cap has stopped growing, so a pair spanning
+          # that measures the clamp rather than the rate.
+          and prev["value"] < cap * FULL_FRACTION)
+    if ok:
+        gained = cur - prev["value"]
+        seconds = written - prev["at"]
+        if seconds > 30:          # too short a gap magnifies timestamp slop
+            fresh = gained / seconds * 3600.0
+            # Averaged with what was already known, so one odd interval -- the
+            # game paused, the machine asleep -- moves the estimate rather
+            # than replacing it.
+            rate = fresh if not rate else (rate + fresh) / 2.0
+            _remember(_RATE_KEY, rate)
+    if prev.get("at") != written:
+        _remember(_SAMPLE_KEY, {"at": written, "value": cur, "cap": cap})
+    return rate
+
+
+def equinox_skip_reason(text=None):
+    """
+    Why the Equinox task would do nothing, or None if it is worth going.
+
+    The bar takes the better part of two days to fill, so this is the task
+    that spends the most trips on nothing -- and it costs a teleport, since
+    Equinox Valley is not reached through a town.
+
+    Unknown answers "worth going", as everywhere else here: the rate is only
+    unknown until the save has been written twice with the program open,
+    which is minutes, and a wasted trip is a better failure than a task that
+    quietly never runs.
+    """
+    text = _newest_text() if text is None else text
+    bar = dream_bar(text)
+    if bar is None:
+        return None
+    cur, cap = bar
+    if cur >= cap * FULL_FRACTION:
+        return None                       # full: there is something to spend
+    rate = observe_dream_bar(text)
+    if not rate or rate <= 0:
+        return None
+    left = (cap - cur) / rate * 3600.0
+    return f"bar {100.0 * cur / cap:.0f}% full - ready in {describe(left)}"
+
+
 def describe(seconds):
     """'2d 1h 3m' for a countdown, for logs and the UI."""
     if seconds is None:

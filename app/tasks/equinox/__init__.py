@@ -25,6 +25,7 @@ import time
 
 import core.input as _input
 import core.window as _window
+from core import savefile
 from core.navigate import Location
 from core.task import Blocked, Param, Progress, Result, Task
 
@@ -70,6 +71,18 @@ class EquinoxTask(Task):
     def __init__(self, dream="Equinox Symbols", **kw):
         self.dream = dream
         self._summary = None
+
+    def asleep(self):
+        """
+        How long until the bar is worth a trip, or None to go now.
+
+        This is the task that most needed it.  The bar takes the better part
+        of two days, the trip costs a teleport because Equinox Valley is not
+        reached through a town, and "the bar is not full yet" was already the
+        normal outcome -- so almost every run was a teleport spent to look at
+        a number that could have been read off the disk.
+        """
+        return savefile.equinox_skip_reason()
 
     def _camera(self):
         import mss
