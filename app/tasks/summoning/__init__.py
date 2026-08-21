@@ -33,10 +33,12 @@ level can move.
 
 WHY THE TASK IS USUALLY ASLEEP
 ------------------------------
-The costs reset weekly, and once the familiar is at 25 there is nothing to buy
-until they do.  asleep() answers both from the save before anything travels,
-so the task can live permanently in a daily list and cost nothing on the days
-it has no work -- which is most of them.
+Weekly, the familiar drops back to level 0 and its cost returns to its floor.
+So once it is at 25 there is nothing to buy until that happens, and "maxed" is
+never a permanent state -- which is what makes a countdown the right thing to
+show rather than a full stop.  asleep() answers it from the save before
+anything travels, so the task can live permanently in a daily list and cost
+nothing on the six days it has no work.
 """
 
 import os

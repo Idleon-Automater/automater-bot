@@ -237,6 +237,12 @@ def summoning_familiar_skip_reason(text=None):
     useful thing to say, because it is when there will be something to buy
     again -- so it is reported as the wait rather than as the reason.
 
+    Confirmed by the player, and it is what makes this a weekly task rather
+    than a one-off: at the reset the familiar drops back to level 0 AND the
+    cost returns to its floor.  So "maxed" is never permanent and the
+    countdown really is the time until there is work again -- which is the
+    only reading under which putting this in a daily list makes sense.
+
     Unreadable answers "worth running": a wasted trip is a better failure than
     silently never running a task the user asked for, which is exactly the
     failure this function shipped with.
@@ -247,7 +253,10 @@ def summoning_familiar_skip_reason(text=None):
         return None
     left = summoning_cost_reset_seconds(text)
     if left is not None and left > 0:
-        return f"maxed - costs reset in {describe(left)}"
+        # "resets", not "costs reset": the level goes back to 0 as well, so
+        # this is when the whole task becomes available again rather than just
+        # when it gets cheaper.
+        return f"maxed - resets in {describe(left)}"
     return f"maxed at {int(lv)}/{FAMILIAR_MAX}"
 
 
