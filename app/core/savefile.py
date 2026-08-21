@@ -224,19 +224,31 @@ def summoning_familiar_skip_reason(text=None):
     """
     Why the familiar task would do nothing, or None if it is worth running.
 
-    Both halves of the question, answered before anyone travels: there is no
-    point going if the familiar is already maxed, and none if the costs have
-    not reset yet.  Unreadable answers "worth running" -- a wasted trip is a
-    better failure than silently never running a task the user asked for.
+    THE LEVEL DECIDES.  THE COUNTDOWN ONLY EXPLAINS.
+    -----------------------------------------------
+    The first version had this backwards and greyed the task out whenever the
+    cost countdown was running -- which is nearly always, and which is not a
+    lockout.  The game's own panel says "Lv.1/25" and "COST: 1" and "Cost
+    resets in 1days 4hr" all at once: the levels are buyable right now, at the
+    cost shown, and the countdown says when that cost goes back to its floor.
+    So a running countdown is no reason to skip anything.
+
+    Only a maxed familiar is.  When it is maxed the countdown becomes the
+    useful thing to say, because it is when there will be something to buy
+    again -- so it is reported as the wait rather than as the reason.
+
+    Unreadable answers "worth running": a wasted trip is a better failure than
+    silently never running a task the user asked for, which is exactly the
+    failure this function shipped with.
     """
     text = _newest_text() if text is None else text
     lv = summoning_familiar_level(text)
-    if lv is not None and lv >= FAMILIAR_MAX:
-        return f"familiar is already {int(lv)}/{FAMILIAR_MAX}"
+    if lv is None or lv < FAMILIAR_MAX:
+        return None
     left = summoning_cost_reset_seconds(text)
     if left is not None and left > 0:
-        return f"costs reset in {describe(left)}"
-    return None
+        return f"maxed - costs reset in {describe(left)}"
+    return f"maxed at {int(lv)}/{FAMILIAR_MAX}"
 
 
 def describe(seconds):
