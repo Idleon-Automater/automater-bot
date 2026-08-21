@@ -47,9 +47,19 @@ NAV = os.path.join(_HERE, "nav")
 OPEN_TRIES = 16
 OPEN_POLL = 0.3
 
-# After a drag.  The shelf redraws and the merge animates; reading too early
-# sees the ribbon mid-flight and hashes a frame that matches nothing.
-MERGE_SETTLE = 0.7
+# After a drag, WAIT FOR THE SHELF TO CHANGE rather than for a fixed delay.
+#
+# A single check 0.7 s after the drag is what the first version did, and it
+# read the shelf mid-animation: the merge had happened, both ribbons were
+# still drawn, the count had not fallen yet, and the run concluded the drag
+# had failed and stopped with one merge done and three more available.
+#
+# A merge always costs a slot -- one rank up or two, the source empties either
+# way -- so "the occupied count fell" is the thing to watch for, and watching
+# costs nothing when it happens quickly.
+MERGE_SETTLE = 0.35       # let the drag land before looking at all
+MERGE_WAIT_S = 4.0        # how long to wait for the count to fall
+MERGE_POLL = 0.2
 
 # A ceiling on merges in one visit.  Not expected to be reached -- 28 slots
 # cannot yield more than 27 merges even if every one cascaded -- and it exists
@@ -185,23 +195,37 @@ class RibbonsTask(Task):
                         rect["top"] + cam.to_screen(dy))
             time.sleep(MERGE_SETTLE)
 
-            frame, _ = cam.grab()
-            if not V.on_cooking_screen(frame):
+            before = V.occupied(shelf)
+            after, closed = None, False
+            deadline = time.perf_counter() + MERGE_WAIT_S
+            while time.perf_counter() < deadline:
+                frame, _ = cam.grab()
+                if not V.on_cooking_screen(frame):
+                    closed = True
+                    break
+                after = V.read_shelf(frame)
+                if V.occupied(after) < before:
+                    break
+                time.sleep(MERGE_POLL)
+
+            if closed:
                 # The screen went away mid-merge.  Stopping is the only safe
                 # response: the next drag would be issued at shelf coordinates
                 # over whatever is showing instead.
                 yield Progress("the cooking screen closed - stopping")
                 break
-            after = V.read_shelf(frame)
-            if V.occupied(after) >= V.occupied(shelf):
-                # A merge always consumes a slot, whether it gave one rank or
-                # two.  If the count did not fall, the drag did not land, and
-                # repeating it would just fail again in the same way.
-                yield Progress("that drag did not merge anything - stopping")
-                shelf = after
+            if after is None or V.occupied(after) >= before:
+                yield Progress(f"slot {src} did not merge after "
+                               f"{MERGE_WAIT_S:.0f}s - stopping")
+                if after is not None:
+                    shelf = after
                 break
             shelf = after
             self._merged += 1
+            # The shelf is re-read every time round rather than planned once,
+            # which is what lets a merge's own result pair with something --
+            # two 3s make a 4, and if a 4 was already there that is a new
+            # merge that did not exist a moment ago.
 
         left = V.occupied(shelf)
         if self._merged:
